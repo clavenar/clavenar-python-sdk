@@ -107,3 +107,134 @@ def make_openai_completion_with_tool_call(
             }
         ],
     }
+
+
+# Sync client fakes — `create` is a regular function. The wrap layer
+# uses `inspect.iscoroutinefunction(create)` to route sync vs. async.
+
+
+@dataclass
+class FakeSyncAnthropicMessages:
+    response: Any
+
+    def create(self, **kwargs: Any) -> Any:
+        return self.response
+
+
+@dataclass
+class FakeSyncAnthropicClient:
+    messages: FakeSyncAnthropicMessages
+
+
+@dataclass
+class FakeSyncOpenAICompletions:
+    response: Any
+
+    def create(self, **kwargs: Any) -> Any:
+        return self.response
+
+
+@dataclass
+class FakeSyncOpenAIChat:
+    completions: FakeSyncOpenAICompletions
+
+
+@dataclass
+class FakeSyncOpenAIClient:
+    chat: FakeSyncOpenAIChat
+
+
+# Stream fakes — minimal event sequences that mirror the upstream SDK
+# shapes. The wrap layer routes a returned async-iterable / iterable
+# straight into the stream module.
+
+
+def make_anthropic_tool_use_events(
+    *,
+    block_index: int = 0,
+    tool_id: str = "toolu_001",
+    tool_name: str = "list_files",
+    arg_chunks: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    chunks = arg_chunks if arg_chunks is not None else ['{"path":', '"/"}']
+    events: list[dict[str, Any]] = [
+        {"type": "message_start"},
+        {
+            "type": "content_block_start",
+            "index": block_index,
+            "content_block": {
+                "type": "tool_use",
+                "id": tool_id,
+                "name": tool_name,
+                "input": {},
+            },
+        },
+    ]
+    for chunk in chunks:
+        events.append({
+            "type": "content_block_delta",
+            "index": block_index,
+            "delta": {"type": "input_json_delta", "partial_json": chunk},
+        })
+    events.append({"type": "content_block_stop", "index": block_index})
+    events.append({"type": "message_stop"})
+    return events
+
+
+def make_openai_tool_call_chunks(
+    *,
+    call_id: str = "call_001",
+    name: str = "list_files",
+    arg_chunks: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    chunks = arg_chunks if arg_chunks is not None else ['{"path":', '"/"}']
+    out: list[dict[str, Any]] = [
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": call_id,
+                                "type": "function",
+                                "function": {"name": name, "arguments": ""},
+                            }
+                        ]
+                    },
+                    "finish_reason": None,
+                }
+            ],
+        }
+    ]
+    for chunk in chunks:
+        out.append({
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "function": {"arguments": chunk},
+                            }
+                        ]
+                    },
+                    "finish_reason": None,
+                }
+            ],
+        })
+    out.append({
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+    })
+    return out
+
+
+async def _aiter(items: list[Any]) -> Any:
+    for item in items:
+        yield item
+
+
+def async_iter(items: list[Any]) -> Any:
+    return _aiter(items)

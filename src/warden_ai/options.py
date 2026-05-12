@@ -16,6 +16,23 @@ WardenMode = Literal["enforce", "observe"]
 
 
 @dataclass(frozen=True)
+class WardenRetryOptions:
+    """Transient-failure retry policy for `inspect_tool_use`.
+
+    Network errors and 5xx responses retry up to `max_attempts` with
+    jittered exponential backoff (`base_delay_s * 2^attempt` ceiling,
+    sampled in `[ceiling/2, ceiling]`). 200, 403, and other 4xx never
+    retry — they're verdicts or config errors, not transients.
+
+    Set `max_attempts=1` to disable retries entirely. Defaults mirror
+    the TS SDK at 0.3.0.
+    """
+
+    max_attempts: int = 3
+    base_delay_s: float = 0.1
+
+
+@dataclass(frozen=True)
 class WardenVerdictContext:
     """Context passed to `WardenOptions.on_verdict` and `on_policy_error`."""
 
@@ -62,3 +79,6 @@ class WardenOptions:
     # default. Useful for proxy auth, tenant routing, demo-prefix
     # tags — anything that needs to ride along with `Authorization`.
     extra_headers: dict[str, str] = field(default_factory=dict)
+    # Transient-failure retry policy. Defaults to 3 attempts with
+    # jittered exponential backoff starting at 100ms.
+    retry: WardenRetryOptions = field(default_factory=WardenRetryOptions)

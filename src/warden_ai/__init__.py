@@ -1,8 +1,11 @@
-"""Wrap your async Anthropic / OpenAI client with Agent Warden inspection.
+"""Wrap your Anthropic / OpenAI client with Agent Warden inspection.
 
-MVP scope: async clients only, non-streaming. Streaming, retries,
-parallel tool_use, WardenPending.resolve, and onPolicyError follow in
-the feature-complete release (Phase 2 sprint 2).
+Supports async (`AsyncAnthropic`, `AsyncOpenAI`) and sync
+(`Anthropic`, `OpenAI`) clients, with non-streaming and streaming
+responses. Tool calls are inspected by warden-lite before the partner
+sees them; a denied call raises `WardenDenied` (mid-iteration for
+streams), a parked call raises `WardenPending` with an `await
+.resolve()` helper that blocks until an operator decides.
 """
 
 from warden_ai.errors import (
@@ -11,16 +14,28 @@ from warden_ai.errors import (
     WardenPending,
     WardenTransportError,
 )
-from warden_ai.options import WardenOptions, WardenVerdictContext
+from warden_ai.options import (
+    WardenOptions,
+    WardenRetryOptions,
+    WardenVerdictContext,
+)
+from warden_ai.stream import (
+    wrap_anthropic_stream,
+    wrap_anthropic_stream_sync,
+    wrap_openai_chat_stream,
+    wrap_openai_chat_stream_sync,
+)
 from warden_ai.transport import (
     NormalizedToolCall,
     WardenVerdict,
     inspect_tool_use,
+    inspect_tool_use_sync,
     poll_pending_once,
+    poll_pending_once_sync,
 )
 from warden_ai.wrap import warden_wrap
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "NormalizedToolCall",
@@ -28,11 +43,18 @@ __all__ = [
     "WardenDenied",
     "WardenOptions",
     "WardenPending",
+    "WardenRetryOptions",
     "WardenTransportError",
     "WardenVerdict",
     "WardenVerdictContext",
     "__version__",
     "inspect_tool_use",
+    "inspect_tool_use_sync",
     "poll_pending_once",
+    "poll_pending_once_sync",
     "warden_wrap",
+    "wrap_anthropic_stream",
+    "wrap_anthropic_stream_sync",
+    "wrap_openai_chat_stream",
+    "wrap_openai_chat_stream_sync",
 ]

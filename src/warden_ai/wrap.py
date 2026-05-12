@@ -1,24 +1,33 @@
-"""Wrap an async Anthropic / OpenAI client so every tool call is
-inspected by warden before the caller sees it.
+"""Wrap an Anthropic / OpenAI client so every tool call is inspected
+by warden before the caller sees it.
 
 Detection is structural and runs once at wrap time:
 
-- `client.messages.create` → Anthropic. We intercept the response,
-  walk `content[]` for `tool_use` blocks, normalize them, inspect.
-- `client.chat.completions.create` → OpenAI. We intercept the
-  response, walk `choices[].message.tool_calls`, JSON-parse the
-  `arguments` string, normalize, inspect.
+- `client.messages.create` → Anthropic. Intercepts the response, walks
+  `content[]` for `tool_use` blocks, normalizes, inspects.
+- `client.chat.completions.create` → OpenAI. Intercepts the response,
+  walks `choices[].message.tool_calls`, JSON-parses each `arguments`
+  string, normalizes, inspects.
 
-The MVP does NOT detect streaming clients — passing
-`stream=True` to a wrapped client returns the raw stream unwrapped.
-Streaming support lands in the feature-complete release
-(Phase 2 sprint 2).
+Both async (`AsyncAnthropic`, `AsyncOpenAI`) and sync (`Anthropic`,
+`OpenAI`) clients are supported. Sync vs async is determined by
+`inspect.iscoroutinefunction(create)`; the sync path uses
+`httpx.Client` and `time.sleep`, the async path uses `httpx.AsyncClient`
+and `asyncio.sleep`.
+
+Streaming (`stream=True`) is intercepted: each event/chunk is passed
+through in order, but the closing event (Anthropic `content_block_stop`,
+OpenAI `finish_reason='tool_calls'`) is held until warden verdicts
+land — a denied call raises mid-iteration before the partner can act
+on it. See `stream.py`.
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+import inspect as inspect_mod
+from collections.abc import AsyncIterable, Iterable
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from warden_ai._anthropic import extract_tool_uses
@@ -30,45 +39,62 @@ from warden_ai.errors import (
     WardenTransportError,
 )
 from warden_ai.options import WardenOptions, WardenVerdictContext
+from warden_ai.stream import (
+    wrap_anthropic_stream,
+    wrap_anthropic_stream_sync,
+    wrap_openai_chat_stream,
+    wrap_openai_chat_stream_sync,
+)
 from warden_ai.transport import (
     NormalizedToolCall,
     inspect_tool_use,
+    inspect_tool_use_sync,
     poll_pending_once,
+    poll_pending_once_sync,
 )
+
+ClientKind = Literal["anthropic", "openai"]
+ClientMode = Literal["async", "sync"]
 
 
 def warden_wrap(client: Any, opts: WardenOptions) -> Any:
-    """Wrap an async Anthropic or OpenAI client.
+    """Wrap an async or sync Anthropic / OpenAI client.
 
-    Anthropic: install a hook on `client.messages.create`.
-    OpenAI:    install a hook on `client.chat.completions.create`.
-
-    Any other client shape raises `WardenConfigError`. The wrap is
-    in-place — we monkeypatch the `.create` attribute on the existing
-    object rather than building a Proxy facade, because Python's
-    attribute model doesn't have a clean object-proxy equivalent and
-    partners typically pass the wrapped client by reference into their
-    agent framework.
+    The wrap is in-place — we monkeypatch the `.create` attribute on
+    the existing object rather than building a Proxy facade, because
+    Python's attribute model doesn't have a clean object-proxy
+    equivalent and partners typically pass the wrapped client by
+    reference into their agent framework.
     """
     _validate_options(opts)
-    kind = _detect_client(client)
-    if kind == "anthropic":
-        return _wrap_anthropic(client, opts)
-    return _wrap_openai(client, opts)
+    kind, mode = _detect_client(client)
+    if kind == "anthropic" and mode == "async":
+        return _wrap_anthropic_async(client, opts)
+    if kind == "anthropic" and mode == "sync":
+        return _wrap_anthropic_sync(client, opts)
+    if kind == "openai" and mode == "async":
+        return _wrap_openai_async(client, opts)
+    return _wrap_openai_sync(client, opts)
 
 
-def _detect_client(client: Any) -> str:
+def _detect_client(client: Any) -> tuple[ClientKind, ClientMode]:
     if client is None:
         raise WardenConfigError("warden_wrap: client must not be None")
 
     messages = getattr(client, "messages", None)
-    if messages is not None and callable(getattr(messages, "create", None)):
-        return "anthropic"
+    if messages is not None:
+        create = getattr(messages, "create", None)
+        if callable(create):
+            mode: ClientMode = "async" if inspect_mod.iscoroutinefunction(create) else "sync"
+            return "anthropic", mode
 
     chat = getattr(client, "chat", None)
     completions = getattr(chat, "completions", None) if chat is not None else None
-    if completions is not None and callable(getattr(completions, "create", None)):
-        return "openai"
+    if completions is not None:
+        create = getattr(completions, "create", None)
+        if callable(create):
+            mode = "async" if inspect_mod.iscoroutinefunction(create) else "sync"
+            return "openai", mode
 
     raise WardenConfigError(
         "warden_wrap: client must expose messages.create (Anthropic) or "
@@ -76,53 +102,72 @@ def _detect_client(client: Any) -> str:
     )
 
 
-def _wrap_anthropic(client: Any, opts: WardenOptions) -> Any:
+def _wrap_anthropic_async(client: Any, opts: WardenOptions) -> Any:
     inner = client.messages.create
 
     async def create_wrapped(*args: Any, **kwargs: Any) -> Any:
-        if kwargs.get("stream") is True:
-            # MVP scope: streaming bypasses inspection. Documented in
-            # README + raises a one-line warning on first use so a
-            # partner relying on streaming notices.
-            _warn_stream_not_inspected()
-            return await _maybe_await(inner(*args, **kwargs))
         result = await _maybe_await(inner(*args, **kwargs))
+        if kwargs.get("stream") is True or _is_async_iterable(result):
+            return wrap_anthropic_stream(result, opts)
         calls = extract_tool_uses(result)
-        await _inspect_all(calls, opts)
+        await _inspect_all_async(calls, opts)
         return result
 
     client.messages.create = create_wrapped
     return client
 
 
-def _wrap_openai(client: Any, opts: WardenOptions) -> Any:
+def _wrap_anthropic_sync(client: Any, opts: WardenOptions) -> Any:
+    inner = client.messages.create
+
+    def create_wrapped(*args: Any, **kwargs: Any) -> Any:
+        result = inner(*args, **kwargs)
+        if kwargs.get("stream") is True or _is_iterable_non_message(result):
+            return wrap_anthropic_stream_sync(result, opts)
+        calls = extract_tool_uses(result)
+        _inspect_all_sync(calls, opts)
+        return result
+
+    client.messages.create = create_wrapped
+    return client
+
+
+def _wrap_openai_async(client: Any, opts: WardenOptions) -> Any:
     inner = client.chat.completions.create
 
     async def create_wrapped(*args: Any, **kwargs: Any) -> Any:
-        if kwargs.get("stream") is True:
-            _warn_stream_not_inspected()
-            return await _maybe_await(inner(*args, **kwargs))
         result = await _maybe_await(inner(*args, **kwargs))
+        if kwargs.get("stream") is True or _is_async_iterable(result):
+            return wrap_openai_chat_stream(result, opts)
         calls = extract_tool_calls(result)
-        await _inspect_all(calls, opts)
+        await _inspect_all_async(calls, opts)
         return result
 
     client.chat.completions.create = create_wrapped
     return client
 
 
-async def _inspect_all(
+def _wrap_openai_sync(client: Any, opts: WardenOptions) -> Any:
+    inner = client.chat.completions.create
+
+    def create_wrapped(*args: Any, **kwargs: Any) -> Any:
+        result = inner(*args, **kwargs)
+        if kwargs.get("stream") is True or _is_iterable_non_message(result):
+            return wrap_openai_chat_stream_sync(result, opts)
+        calls = extract_tool_calls(result)
+        _inspect_all_sync(calls, opts)
+        return result
+
+    client.chat.completions.create = create_wrapped
+    return client
+
+
+async def _inspect_all_async(
     calls: list[NormalizedToolCall], opts: WardenOptions
 ) -> None:
-    """Inspect every normalized tool call concurrently. Fire the
-    verdict callback in submission order; (enforce only) raise on the
-    first deny / pending.
-
-    Mirrors the TS SDK's `inspectAllToolCalls`: calls run in parallel
-    via `asyncio.gather`, but the consume-loop walks them in submission
-    order so the first deny in `calls[]` is what raises, not the first
-    deny to come back over the wire. Observe-mode transport errors are
-    caught per-call and surfaced via `on_policy_error`.
+    """Inspect all tool calls concurrently via `asyncio.gather`; fire
+    callbacks in submission order; raise on the first deny/pending.
+    Observe-mode transport errors are caught per-call.
     """
     if not calls:
         return
@@ -154,38 +199,131 @@ async def _inspect_all(
             await _maybe_await(opts.on_verdict(verdict, ctx))
         if not enforce:
             continue
-        if verdict.kind == "deny":
-            raise WardenDenied(
-                tool_name=call.name,
-                reasons=verdict.reasons,
-                review_reasons=verdict.review_reasons,
-                intent_category=verdict.intent_category,
-                correlation_id=verdict.correlation_id,
-            )
-        if verdict.kind == "pending":
-            corr = verdict.correlation_id
+        _raise_for_verdict_async(verdict, call, opts)
 
-            async def _poll(corr_id: str = corr) -> Any:
-                return await poll_pending_once(corr_id, opts)
 
-            raise WardenPending(
-                tool_name=call.name,
-                correlation_id=verdict.correlation_id,
-                review_reasons=verdict.review_reasons,
-                poll_once=_poll,
-            )
+def _raise_for_verdict_async(
+    verdict: Any, call: NormalizedToolCall, opts: WardenOptions
+) -> None:
+    if verdict.kind == "deny":
+        raise WardenDenied(
+            tool_name=call.name,
+            reasons=verdict.reasons,
+            review_reasons=verdict.review_reasons,
+            intent_category=verdict.intent_category,
+            correlation_id=verdict.correlation_id,
+        )
+    if verdict.kind == "pending":
+        corr = verdict.correlation_id
+
+        async def _poll(corr_id: str = corr) -> Any:
+            return await poll_pending_once(corr_id, opts)
+
+        raise WardenPending(
+            tool_name=call.name,
+            correlation_id=verdict.correlation_id,
+            review_reasons=verdict.review_reasons,
+            poll_once=_poll,
+        )
+
+
+def _inspect_all_sync(
+    calls: list[NormalizedToolCall], opts: WardenOptions
+) -> None:
+    """Sync mirror of `_inspect_all_async`. Inspections run serially —
+    `asyncio.gather` has no sync equivalent and threading for I/O here
+    isn't worth the complexity for the 1-3 tool calls a typical turn
+    emits.
+    """
+    if not calls:
+        return
+    enforce = opts.mode == "enforce"
+    results: list[tuple[NormalizedToolCall, Any]] = []
+    for c in calls:
+        try:
+            results.append((c, inspect_tool_use_sync(c, opts)))
+        except WardenTransportError as e:
+            if not enforce:
+                results.append((c, e))
+                continue
+            raise
+    for call, result in results:
+        ctx = WardenVerdictContext(
+            tool_name=call.name,
+            tool_use_id=call.id,
+            tool_input=call.input,
+        )
+        if isinstance(result, WardenTransportError):
+            if opts.on_policy_error is not None:
+                out = opts.on_policy_error(result, ctx)
+                if asyncio.iscoroutine(out):
+                    raise WardenConfigError(
+                        "on_policy_error returned a coroutine but the client is "
+                        "sync; use a sync callback for sync clients"
+                    )
+            continue
+        verdict = result
+        if opts.on_verdict is not None:
+            out = opts.on_verdict(verdict, ctx)
+            if asyncio.iscoroutine(out):
+                raise WardenConfigError(
+                    "on_verdict returned a coroutine but the client is sync; "
+                    "use a sync callback for sync clients"
+                )
+        if not enforce:
+            continue
+        _raise_for_verdict_sync(verdict, call, opts)
+
+
+def _raise_for_verdict_sync(
+    verdict: Any, call: NormalizedToolCall, opts: WardenOptions
+) -> None:
+    if verdict.kind == "deny":
+        raise WardenDenied(
+            tool_name=call.name,
+            reasons=verdict.reasons,
+            review_reasons=verdict.review_reasons,
+            intent_category=verdict.intent_category,
+            correlation_id=verdict.correlation_id,
+        )
+    if verdict.kind == "pending":
+        corr = verdict.correlation_id
+
+        async def _poll(corr_id: str = corr) -> Any:
+            return poll_pending_once_sync(corr_id, opts)
+
+        raise WardenPending(
+            tool_name=call.name,
+            correlation_id=verdict.correlation_id,
+            review_reasons=verdict.review_reasons,
+            poll_once=_poll,
+        )
 
 
 async def _maybe_await(value: Any) -> Any:
-    """The wrapped client's `.create` may be an `AsyncMock` (in tests
-    using a sync return), an `Anthropic` sync client misused under
-    async (returns a non-coroutine), or a real async coroutine. Accept
-    all three — if `value` is awaitable, await it; otherwise pass
-    through.
+    """The wrapped client's `.create` may be an `AsyncMock` (sync
+    return), an unsuitable client, or a real coroutine. Accept all
+    three — if `value` is awaitable, await it; otherwise pass through.
     """
     if asyncio.iscoroutine(value):
         return await value
     return value
+
+
+def _is_async_iterable(v: Any) -> bool:
+    return isinstance(v, AsyncIterable)
+
+
+def _is_iterable_non_message(v: Any) -> bool:
+    """Heuristic: a sync stream object is iterable but the Message /
+    ChatCompletion response objects (which carry `content`, `choices`)
+    are not. We don't want to treat a Message dict as a stream.
+    """
+    if isinstance(v, (str, bytes, dict)):
+        return False
+    if hasattr(v, "content") or hasattr(v, "choices"):
+        return False
+    return isinstance(v, Iterable)
 
 
 def _validate_options(opts: WardenOptions) -> None:
@@ -204,26 +342,13 @@ def _validate_options(opts: WardenOptions) -> None:
         raise WardenConfigError(
             f"warden_wrap: opts.mode must be 'enforce' or 'observe' (got {opts.mode!r})"
         )
-
-
-_warned_stream = False
-
-
-def _warn_stream_not_inspected() -> None:
-    """One-time warning when a partner passes `stream=True` to a
-    wrapped client. The MVP's documented contract is "non-streaming
-    only"; streaming arrives in the feature-complete release.
-    """
-    global _warned_stream
-    if _warned_stream:
-        return
-    _warned_stream = True
-    import warnings
-
-    warnings.warn(
-        "warden_ai 0.1.0 MVP does not inspect streaming responses. "
-        "The underlying agent call is passing through unchecked. "
-        "Streaming support lands in the feature-complete release.",
-        RuntimeWarning,
-        stacklevel=3,
-    )
+    if opts.retry.max_attempts < 1:
+        raise WardenConfigError(
+            f"warden_wrap: opts.retry.max_attempts must be >= 1 "
+            f"(got {opts.retry.max_attempts})"
+        )
+    if opts.retry.base_delay_s < 0:
+        raise WardenConfigError(
+            f"warden_wrap: opts.retry.base_delay_s must be >= 0 "
+            f"(got {opts.retry.base_delay_s})"
+        )

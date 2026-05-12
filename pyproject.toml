@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "warden-ai"
-version = "0.1.0"
+version = "0.2.0"
 description = "Wrap your Anthropic / OpenAI Python client. Every tool call is inspected by Agent Warden before it runs."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -47,6 +47,7 @@ packages = ["src/warden_ai"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = [".", "tests"]
 
 [tool.ruff]
 line-length = 100

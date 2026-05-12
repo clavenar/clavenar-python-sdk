@@ -1,10 +1,19 @@
 """HTTP transport for warden-lite. Submits one normalized tool call,
 parses the verdict (allow / deny / pending), and surfaces correlation
 ids for ledger lookups.
+
+Both async and sync flavours live here. The sync flavour exists for
+partners wrapping `anthropic.Anthropic` / `openai.OpenAI` (the
+non-async SDK clients) — the wrap pattern can't transparently jump
+out of a sync caller into an event loop, so a parallel sync transport
+is the cleanest seam.
 """
 
 from __future__ import annotations
 
+import asyncio
+import random
+import time
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -76,20 +85,35 @@ async def inspect_tool_use(
     Wire contract: `POST {endpoint}/mcp` with a JSON-RPC 2.0 envelope.
     Server: `warden-lite/src/proxy.rs::handle_mcp`.
 
-    Pass `client` to share a connection pool across many inspections;
-    omit to mint a single-shot one (slower but ergonomic for
-    one-off calls).
+    Retry semantics: network failures and 5xx retry up to
+    `opts.retry.max_attempts` with jittered exponential backoff. 200,
+    403, and other 4xx never retry. Pass `client` to share a connection
+    pool across many inspections; omit to mint a single-shot one.
     """
-    body = {
-        "jsonrpc": "2.0",
-        "method": "tools/call",
-        "params": {"name": tool_call.name, "arguments": tool_call.input},
-        "id": tool_call.id,
-    }
-    headers = {"Content-Type": "application/json", **opts.extra_headers}
-    if opts.token:
-        headers["Authorization"] = f"Bearer {opts.token}"
+    retry = opts.retry
+    if retry.max_attempts < 1:
+        raise WardenTransportError(
+            f"retry.max_attempts must be >= 1, got {retry.max_attempts}"
+        )
+    last_err: WardenTransportError | None = None
+    for attempt in range(retry.max_attempts):
+        try:
+            return await _inspect_single_attempt(tool_call, opts, client)
+        except WardenTransportError as e:
+            last_err = e
+            if not _is_retriable(e) or attempt == retry.max_attempts - 1:
+                raise
+            await asyncio.sleep(_backoff_s(retry.base_delay_s, attempt))
+    raise last_err or WardenTransportError("warden inspect: no attempts ran")
 
+
+async def _inspect_single_attempt(
+    tool_call: NormalizedToolCall,
+    opts: WardenOptions,
+    client: httpx.AsyncClient | None,
+) -> WardenVerdict:
+    body = _inspect_body(tool_call)
+    headers = _inspect_headers(opts)
     url = _join_url(opts.endpoint, "/mcp")
     owned: httpx.AsyncClient | None = None
     if client is None:
@@ -108,6 +132,83 @@ async def inspect_tool_use(
         if owned is not None:
             await owned.aclose()
 
+    return _parse_inspect_response(response)
+
+
+def inspect_tool_use_sync(
+    tool_call: NormalizedToolCall,
+    opts: WardenOptions,
+    *,
+    client: httpx.Client | None = None,
+) -> WardenVerdict:
+    """Sync mirror of `inspect_tool_use` for partners wrapping
+    `anthropic.Anthropic` / `openai.OpenAI`.
+
+    Same retry semantics as the async path, with `time.sleep` between
+    attempts. Pass `client` to share a connection pool.
+    """
+    retry = opts.retry
+    if retry.max_attempts < 1:
+        raise WardenTransportError(
+            f"retry.max_attempts must be >= 1, got {retry.max_attempts}"
+        )
+    last_err: WardenTransportError | None = None
+    for attempt in range(retry.max_attempts):
+        try:
+            return _inspect_single_attempt_sync(tool_call, opts, client)
+        except WardenTransportError as e:
+            last_err = e
+            if not _is_retriable(e) or attempt == retry.max_attempts - 1:
+                raise
+            time.sleep(_backoff_s(retry.base_delay_s, attempt))
+    raise last_err or WardenTransportError("warden inspect: no attempts ran")
+
+
+def _inspect_single_attempt_sync(
+    tool_call: NormalizedToolCall,
+    opts: WardenOptions,
+    client: httpx.Client | None,
+) -> WardenVerdict:
+    body = _inspect_body(tool_call)
+    headers = _inspect_headers(opts)
+    url = _join_url(opts.endpoint, "/mcp")
+    owned: httpx.Client | None = None
+    if client is None:
+        owned = httpx.Client(timeout=opts.timeout_s)
+        client = owned
+    try:
+        try:
+            response = client.post(url, json=body, headers=headers, timeout=opts.timeout_s)
+        except httpx.TimeoutException as e:
+            raise WardenTransportError(
+                f"warden inspect timed out after {opts.timeout_s}s"
+            ) from e
+        except httpx.HTTPError as e:
+            raise WardenTransportError(f"warden inspect failed: {e}") from e
+    finally:
+        if owned is not None:
+            owned.close()
+
+    return _parse_inspect_response(response)
+
+
+def _inspect_body(tool_call: NormalizedToolCall) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {"name": tool_call.name, "arguments": tool_call.input},
+        "id": tool_call.id,
+    }
+
+
+def _inspect_headers(opts: WardenOptions) -> dict[str, str]:
+    headers = {"Content-Type": "application/json", **opts.extra_headers}
+    if opts.token:
+        headers["Authorization"] = f"Bearer {opts.token}"
+    return headers
+
+
+def _parse_inspect_response(response: httpx.Response) -> WardenVerdict:
     correlation_id = response.headers.get(CORRELATION_HEADER)
 
     if response.status_code == 200:
@@ -141,6 +242,21 @@ async def inspect_tool_use(
         + (f": {text}" if text else ""),
         status=response.status_code,
     )
+
+
+def _is_retriable(e: WardenTransportError) -> bool:
+    # No status → fetch itself rejected (DNS, ECONNREFUSED, abort). Retry.
+    # 5xx → server error, retry. Everything else (401, 404, 400) is a
+    # config error — retrying won't help.
+    if e.status is None:
+        return True
+    return 500 <= e.status < 600
+
+
+def _backoff_s(base_s: float, attempt: int) -> float:
+    # Exponential with full jitter: random in [base*2^attempt/2, base*2^attempt].
+    ceiling: float = base_s * (2 ** attempt)
+    return float(ceiling * (0.5 + random.random() * 0.5))
 
 
 async def poll_pending_once(
@@ -178,6 +294,45 @@ async def poll_pending_once(
     finally:
         if owned is not None:
             await owned.aclose()
+
+    if response.status_code == 200:
+        return _parse_pending_view(response)
+    text = _safe_text(response)
+    raise WardenTransportError(
+        f"warden poll: unexpected status {response.status_code}"
+        + (f": {text}" if text else ""),
+        status=response.status_code,
+    )
+
+
+def poll_pending_once_sync(
+    correlation_id: str,
+    opts: WardenOptions,
+    *,
+    client: httpx.Client | None = None,
+) -> WardenPendingView:
+    """Sync mirror of `poll_pending_once`. Used by `WardenPending.resolve_sync`."""
+    headers: dict[str, str] = dict(opts.extra_headers)
+    if opts.token:
+        headers["Authorization"] = f"Bearer {opts.token}"
+
+    url = _join_url(opts.endpoint, f"/pending/{correlation_id}")
+    owned: httpx.Client | None = None
+    if client is None:
+        owned = httpx.Client(timeout=opts.timeout_s)
+        client = owned
+    try:
+        try:
+            response = client.get(url, headers=headers, timeout=opts.timeout_s)
+        except httpx.TimeoutException as e:
+            raise WardenTransportError(
+                f"warden poll timed out after {opts.timeout_s}s"
+            ) from e
+        except httpx.HTTPError as e:
+            raise WardenTransportError(f"warden poll failed: {e}") from e
+    finally:
+        if owned is not None:
+            owned.close()
 
     if response.status_code == 200:
         return _parse_pending_view(response)

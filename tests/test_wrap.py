@@ -5,8 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
-
-from tests.conftest import (
+from conftest import (
     FAKE_ENDPOINT,
     FakeAnthropicClient,
     FakeAnthropicMessages,
@@ -16,6 +15,7 @@ from tests.conftest import (
     make_anthropic_message_with_tool_use,
     make_openai_completion_with_tool_call,
 )
+
 from warden_ai.errors import (
     WardenConfigError,
     WardenDenied,
