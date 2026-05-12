@@ -19,6 +19,11 @@ from warden_ai.options import (
     WardenRetryOptions,
     WardenVerdictContext,
 )
+from warden_ai.realtime import (
+    inspect_realtime_function_call,
+    is_realtime_function_call_done,
+    normalize_realtime_function_call,
+)
 from warden_ai.stream import (
     wrap_anthropic_stream,
     wrap_anthropic_stream_sync,
@@ -48,8 +53,11 @@ __all__ = [
     "WardenVerdict",
     "WardenVerdictContext",
     "__version__",
+    "inspect_realtime_function_call",
     "inspect_tool_use",
     "inspect_tool_use_sync",
+    "is_realtime_function_call_done",
+    "normalize_realtime_function_call",
     "poll_pending_once",
     "poll_pending_once_sync",
     "warden_wrap",
