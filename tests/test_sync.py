@@ -83,9 +83,7 @@ def test_sync_openai_deny_raises() -> None:
         )
     )
     opts = WardenOptions(endpoint=FAKE_ENDPOINT, mode="enforce", timeout_s=2.0)
-    client = warden_wrap(
-        _sync_openai(make_openai_completion_with_tool_call(name="exec_sql")), opts
-    )
+    client = warden_wrap(_sync_openai(make_openai_completion_with_tool_call(name="exec_sql")), opts)
     with pytest.raises(WardenDenied):
         client.chat.completions.create(model="gpt-5")
 
@@ -104,9 +102,7 @@ def test_sync_observe_transport_error_routes_to_callback() -> None:
         timeout_s=2.0,
         on_policy_error=on_policy_error,
     )
-    client = warden_wrap(
-        _sync_anthropic(make_anthropic_message_with_tool_use()), opts
-    )
+    client = warden_wrap(_sync_anthropic(make_anthropic_message_with_tool_use()), opts)
     # Should NOT raise.
     result = client.messages.create(model="claude-x")
     assert result["stop_reason"] == "tool_use"
@@ -124,8 +120,6 @@ def test_sync_enforce_5xx_propagates_after_retries_exhausted() -> None:
         timeout_s=2.0,
         retry=WardenRetryOptions(max_attempts=1, base_delay_s=0.001),
     )
-    client = warden_wrap(
-        _sync_anthropic(make_anthropic_message_with_tool_use()), opts
-    )
+    client = warden_wrap(_sync_anthropic(make_anthropic_message_with_tool_use()), opts)
     with pytest.raises(WardenTransportError):
         client.messages.create(model="claude-x")

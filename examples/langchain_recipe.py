@@ -104,9 +104,7 @@ async def main() -> None:
     # directly so the wiring is visible.
     for tool in tools:
         sample = (
-            '{"userId":"alice"}'
-            if tool["name"] == "fetch_user"
-            else '{"to":"acct-9","amount":250}'
+            '{"userId":"alice"}' if tool["name"] == "fetch_user" else '{"to":"acct-9","amount":250}'
         )
         print(f"\n→ {tool['name']}: {sample}")
         print(" ", await tool["func"](sample))

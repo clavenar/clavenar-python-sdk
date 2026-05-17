@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    name: ruff / mypy / pytest / build (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: install dev extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install build
+
+      - name: ruff check
+        run: ruff check
+
+      - name: ruff format --check
+        run: ruff format --check
+
+      # mypy is pinned to py3.10 in pyproject.toml — running it under
+      # every matrix interpreter would just re-check the same surface.
+      # Keep it scoped to one job so feedback stays focused.
+      - name: mypy
+        if: matrix.python-version == '3.10'
+        run: mypy src/warden_ai
+
+      - name: pytest
+        run: pytest
+
+      - name: build sdist + wheel
+        run: python -m build

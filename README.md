@@ -155,6 +155,20 @@ Python 3.10+. Runtime dep is `httpx` only; the `anthropic` and
 | `extra_headers` | `dict[str, str]` | `{}` | Forwarded on every inspect (`X-Warden-Demo-Prefix`, proxy auth, …) |
 | `retry` | `WardenRetryOptions` | `(3, 0.1)` | Jittered exponential backoff for 5xx + network errors |
 
+## Wire contract
+
+The HTTP shape this SDK speaks against the inspect endpoint
+(`POST /inspect`, the verdict envelope, the pending / resolve
+contract, and the `X-Warden-*` header set) is documented in the
+workspace's source of truth:
+[`warden-specs/TECH_SPEC.md`](https://github.com/vanteguardlabs/warden-specs/blob/main/TECH_SPEC.md).
+This SDK is a faithful client of that contract — if you observe a
+divergence, file the bug against the spec first.
+
+The TypeScript sibling at
+[`warden-ai-sdk`](https://github.com/vanteguardlabs/warden-ai-sdk)
+implements the same wire contract with parity guarantees.
+
 ## License
 
 Apache-2.0.

@@ -56,10 +56,7 @@ def warden_function_tool(
             try:
                 await pending.resolve()
             except WardenDenied as decided:
-                return (
-                    f"[warden] {name} denied by operator: "
-                    f"{' ; '.join(decided.reasons)}"
-                )
+                return f"[warden] {name} denied by operator: {' ; '.join(decided.reasons)}"
         except WardenDenied as denied:
             return f"[warden] {name} denied: {' ; '.join(denied.reasons)}"
         result = fn(**kwargs)

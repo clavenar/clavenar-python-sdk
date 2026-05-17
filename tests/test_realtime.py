@@ -33,9 +33,7 @@ def test_is_done_matches_terminal_event() -> None:
 
 def test_is_done_rejects_audio_delta() -> None:
     assert (
-        is_realtime_function_call_done(
-            {"type": "response.audio.delta", "delta": "aGVsbG8="}
-        )
+        is_realtime_function_call_done({"type": "response.audio.delta", "delta": "aGVsbG8="})
         is False
     )
 
@@ -55,10 +53,7 @@ def test_is_done_rejects_in_flight_delta() -> None:
 
 def test_is_done_rejects_malformed_done_event() -> None:
     assert (
-        is_realtime_function_call_done(
-            {"type": "response.function_call_arguments.done"}
-        )
-        is False
+        is_realtime_function_call_done({"type": "response.function_call_arguments.done"}) is False
     )
 
 
@@ -78,9 +73,7 @@ def test_normalize_falls_back_to_raw_string_on_invalid_json() -> None:
 
 @respx.mock
 async def test_inspect_returns_allow_on_200() -> None:
-    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
-        return_value=httpx.Response(200, json={})
-    )
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200, json={}))
     verdict = await inspect_realtime_function_call(
         _done_event(),
         WardenOptions(endpoint=FAKE_ENDPOINT),

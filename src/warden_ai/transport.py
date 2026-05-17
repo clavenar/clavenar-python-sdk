@@ -92,9 +92,7 @@ async def inspect_tool_use(
     """
     retry = opts.retry
     if retry.max_attempts < 1:
-        raise WardenTransportError(
-            f"retry.max_attempts must be >= 1, got {retry.max_attempts}"
-        )
+        raise WardenTransportError(f"retry.max_attempts must be >= 1, got {retry.max_attempts}")
     last_err: WardenTransportError | None = None
     for attempt in range(retry.max_attempts):
         try:
@@ -123,9 +121,7 @@ async def _inspect_single_attempt(
         try:
             response = await client.post(url, json=body, headers=headers, timeout=opts.timeout_s)
         except httpx.TimeoutException as e:
-            raise WardenTransportError(
-                f"warden inspect timed out after {opts.timeout_s}s"
-            ) from e
+            raise WardenTransportError(f"warden inspect timed out after {opts.timeout_s}s") from e
         except httpx.HTTPError as e:
             raise WardenTransportError(f"warden inspect failed: {e}") from e
     finally:
@@ -149,9 +145,7 @@ def inspect_tool_use_sync(
     """
     retry = opts.retry
     if retry.max_attempts < 1:
-        raise WardenTransportError(
-            f"retry.max_attempts must be >= 1, got {retry.max_attempts}"
-        )
+        raise WardenTransportError(f"retry.max_attempts must be >= 1, got {retry.max_attempts}")
     last_err: WardenTransportError | None = None
     for attempt in range(retry.max_attempts):
         try:
@@ -180,9 +174,7 @@ def _inspect_single_attempt_sync(
         try:
             response = client.post(url, json=body, headers=headers, timeout=opts.timeout_s)
         except httpx.TimeoutException as e:
-            raise WardenTransportError(
-                f"warden inspect timed out after {opts.timeout_s}s"
-            ) from e
+            raise WardenTransportError(f"warden inspect timed out after {opts.timeout_s}s") from e
         except httpx.HTTPError as e:
             raise WardenTransportError(f"warden inspect failed: {e}") from e
     finally:
@@ -238,8 +230,7 @@ def _parse_inspect_response(response: httpx.Response) -> WardenVerdict:
 
     text = _safe_text(response)
     raise WardenTransportError(
-        f"warden inspect: unexpected status {response.status_code}"
-        + (f": {text}" if text else ""),
+        f"warden inspect: unexpected status {response.status_code}" + (f": {text}" if text else ""),
         status=response.status_code,
     )
 
@@ -255,7 +246,7 @@ def _is_retriable(e: WardenTransportError) -> bool:
 
 def _backoff_s(base_s: float, attempt: int) -> float:
     # Exponential with full jitter: random in [base*2^attempt/2, base*2^attempt].
-    ceiling: float = base_s * (2 ** attempt)
+    ceiling: float = base_s * (2**attempt)
     return float(ceiling * (0.5 + random.random() * 0.5))
 
 
@@ -286,9 +277,7 @@ async def poll_pending_once(
         try:
             response = await client.get(url, headers=headers, timeout=opts.timeout_s)
         except httpx.TimeoutException as e:
-            raise WardenTransportError(
-                f"warden poll timed out after {opts.timeout_s}s"
-            ) from e
+            raise WardenTransportError(f"warden poll timed out after {opts.timeout_s}s") from e
         except httpx.HTTPError as e:
             raise WardenTransportError(f"warden poll failed: {e}") from e
     finally:
@@ -299,8 +288,7 @@ async def poll_pending_once(
         return _parse_pending_view(response)
     text = _safe_text(response)
     raise WardenTransportError(
-        f"warden poll: unexpected status {response.status_code}"
-        + (f": {text}" if text else ""),
+        f"warden poll: unexpected status {response.status_code}" + (f": {text}" if text else ""),
         status=response.status_code,
     )
 
@@ -325,9 +313,7 @@ def poll_pending_once_sync(
         try:
             response = client.get(url, headers=headers, timeout=opts.timeout_s)
         except httpx.TimeoutException as e:
-            raise WardenTransportError(
-                f"warden poll timed out after {opts.timeout_s}s"
-            ) from e
+            raise WardenTransportError(f"warden poll timed out after {opts.timeout_s}s") from e
         except httpx.HTTPError as e:
             raise WardenTransportError(f"warden poll failed: {e}") from e
     finally:
@@ -338,8 +324,7 @@ def poll_pending_once_sync(
         return _parse_pending_view(response)
     text = _safe_text(response)
     raise WardenTransportError(
-        f"warden poll: unexpected status {response.status_code}"
-        + (f": {text}" if text else ""),
+        f"warden poll: unexpected status {response.status_code}" + (f": {text}" if text else ""),
         status=response.status_code,
     )
 
@@ -348,22 +333,16 @@ def _parse_deny_body(response: httpx.Response) -> dict[str, Any]:
     try:
         body = response.json()
     except ValueError as e:
-        raise WardenTransportError(
-            f"warden 403 with unparseable body: {e}", status=403
-        ) from e
+        raise WardenTransportError(f"warden 403 with unparseable body: {e}", status=403) from e
     if not isinstance(body, dict):
-        raise WardenTransportError(
-            f"warden 403 with unexpected body shape: {body!r}", status=403
-        )
+        raise WardenTransportError(f"warden 403 with unexpected body shape: {body!r}", status=403)
     if (
         body.get("error") != "security_violation"
         or not isinstance(body.get("reasons"), list)
         or not isinstance(body.get("review_reasons"), list)
         or not isinstance(body.get("intent_category"), str)
     ):
-        raise WardenTransportError(
-            f"warden 403 with unexpected body shape: {body!r}", status=403
-        )
+        raise WardenTransportError(f"warden 403 with unexpected body shape: {body!r}", status=403)
     return body
 
 
@@ -371,21 +350,15 @@ def _parse_pending_body(response: httpx.Response) -> dict[str, Any]:
     try:
         body = response.json()
     except ValueError as e:
-        raise WardenTransportError(
-            f"warden 202 with unparseable body: {e}", status=202
-        ) from e
+        raise WardenTransportError(f"warden 202 with unparseable body: {e}", status=202) from e
     if not isinstance(body, dict):
-        raise WardenTransportError(
-            f"warden 202 with unexpected body shape: {body!r}", status=202
-        )
+        raise WardenTransportError(f"warden 202 with unexpected body shape: {body!r}", status=202)
     if (
         body.get("status") != "pending"
         or not isinstance(body.get("correlation_id"), str)
         or not isinstance(body.get("review_reasons"), list)
     ):
-        raise WardenTransportError(
-            f"warden 202 with unexpected body shape: {body!r}", status=202
-        )
+        raise WardenTransportError(f"warden 202 with unexpected body shape: {body!r}", status=202)
     return body
 
 

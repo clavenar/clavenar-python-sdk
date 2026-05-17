@@ -103,9 +103,7 @@ async def test_500_raises_transport_error_with_status() -> None:
 
 @respx.mock
 async def test_authorization_header_includes_token() -> None:
-    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
-        return_value=httpx.Response(200)
-    )
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200))
     await inspect_tool_use(
         NormalizedToolCall(id="toolu_1", name="op", input={}),
         WardenOptions(endpoint=FAKE_ENDPOINT, token="secret-123"),
@@ -115,9 +113,7 @@ async def test_authorization_header_includes_token() -> None:
 
 @respx.mock
 async def test_extra_headers_forwarded() -> None:
-    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
-        return_value=httpx.Response(200)
-    )
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200))
     await inspect_tool_use(
         NormalizedToolCall(id="toolu_1", name="op", input={}),
         WardenOptions(
@@ -146,9 +142,7 @@ async def test_poll_pending_returns_decision_view() -> None:
             },
         )
     )
-    view = await poll_pending_once(
-        "corr-9", WardenOptions(endpoint=FAKE_ENDPOINT)
-    )
+    view = await poll_pending_once("corr-9", WardenOptions(endpoint=FAKE_ENDPOINT))
     assert view.decision == "allow"
     assert view.agent_id == "agent-a"
 
@@ -159,7 +153,5 @@ async def test_poll_pending_terminal_status_raises() -> None:
         return_value=httpx.Response(404, text="not found")
     )
     with pytest.raises(WardenTransportError) as exc:
-        await poll_pending_once(
-            "missing", WardenOptions(endpoint=FAKE_ENDPOINT)
-        )
+        await poll_pending_once("missing", WardenOptions(endpoint=FAKE_ENDPOINT))
     assert exc.value.status == 404

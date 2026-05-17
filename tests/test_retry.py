@@ -75,9 +75,7 @@ async def test_403_does_not_retry() -> None:
 
 @respx.mock
 async def test_401_does_not_retry() -> None:
-    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
-        return_value=httpx.Response(401, text="auth")
-    )
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(401, text="auth"))
     opts = WardenOptions(
         endpoint=FAKE_ENDPOINT,
         timeout_s=2.0,
@@ -106,9 +104,7 @@ async def test_network_failure_retries() -> None:
 
 @respx.mock
 async def test_max_attempts_1_disables_retry() -> None:
-    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
-        return_value=httpx.Response(502, text="bg")
-    )
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(502, text="bg"))
     opts = WardenOptions(
         endpoint=FAKE_ENDPOINT,
         timeout_s=2.0,

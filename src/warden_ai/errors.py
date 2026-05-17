@@ -39,9 +39,7 @@ class WardenDenied(Exception):
         intent_category: str,
         correlation_id: str | None = None,
     ) -> None:
-        super().__init__(
-            f"warden denied tool {tool_name!r}: {' | '.join(reasons)}"
-        )
+        super().__init__(f"warden denied tool {tool_name!r}: {' | '.join(reasons)}")
         self.tool_name = tool_name
         self.reasons = reasons
         self.review_reasons = review_reasons
@@ -67,8 +65,7 @@ class WardenPending(Exception):
         poll_once: Callable[[], Awaitable[WardenPendingView]],
     ) -> None:
         super().__init__(
-            f"warden parked tool {tool_name!r} for review "
-            f"(correlation_id={correlation_id})"
+            f"warden parked tool {tool_name!r} for review (correlation_id={correlation_id})"
         )
         self.tool_name = tool_name
         self.correlation_id = correlation_id
@@ -112,11 +109,7 @@ class WardenPending(Exception):
             if view is not None and view.decision == "allow":
                 return
             if view is not None and view.decision == "deny":
-                reasons = (
-                    [view.decider_note]
-                    if view.decider_note
-                    else ["operator denied"]
-                )
+                reasons = [view.decider_note] if view.decider_note else ["operator denied"]
                 raise WardenDenied(
                     tool_name=self.tool_name,
                     reasons=reasons,

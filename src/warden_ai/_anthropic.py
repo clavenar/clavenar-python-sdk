@@ -28,9 +28,7 @@ def extract_tool_uses(result: Any) -> list[NormalizedToolCall]:
         block_input = _get(block, "input")
         if not isinstance(block_id, str) or not isinstance(block_name, str):
             continue
-        out.append(
-            NormalizedToolCall(id=block_id, name=block_name, input=block_input)
-        )
+        out.append(NormalizedToolCall(id=block_id, name=block_name, input=block_input))
     return out
 
 

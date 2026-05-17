@@ -104,10 +104,7 @@ async def main() -> None:
                         "item": {
                             "type": "function_call_output",
                             "call_id": evt["call_id"],
-                            "output": (
-                                "[warden] denied: "
-                                + " ; ".join(verdict.reasons)
-                            ),
+                            "output": ("[warden] denied: " + " ; ".join(verdict.reasons)),
                         },
                     }
                 )

@@ -204,9 +204,7 @@ def wrap_openai_chat_stream_sync(
         yield chunk
 
 
-def _accumulate_openai(
-    bufs: dict[int, _ChoiceBufs], choice_idx: int, d: Any
-) -> None:
+def _accumulate_openai(bufs: dict[int, _ChoiceBufs], choice_idx: int, d: Any) -> None:
     cb = bufs.setdefault(choice_idx, _ChoiceBufs())
     tool_idx = _evt(d, "index", default=0)
     if not isinstance(tool_idx, int):
@@ -225,9 +223,7 @@ def _accumulate_openai(
             buf.args_buf += d_args
 
 
-def _drain_openai_choice(
-    bufs: dict[int, _ChoiceBufs], choice_idx: int
-) -> list[NormalizedToolCall]:
+def _drain_openai_choice(bufs: dict[int, _ChoiceBufs], choice_idx: int) -> list[NormalizedToolCall]:
     cb = bufs.pop(choice_idx, None)
     if cb is None:
         return []
@@ -245,9 +241,7 @@ def _drain_openai_choice(
 
 def _buf_to_call(buf: _ToolBuf, label: str) -> NormalizedToolCall:
     if buf.id is None or buf.name is None:
-        raise WardenConfigError(
-            f"{label} buffer missing id or name at close"
-        )
+        raise WardenConfigError(f"{label} buffer missing id or name at close")
     if buf.args_buf == "":
         parsed: Any = {}
     else:
@@ -353,9 +347,7 @@ async def _fire_policy_error(
 ) -> None:
     if opts.on_policy_error is None:
         return
-    ctx = WardenVerdictContext(
-        tool_name=call.name, tool_use_id=call.id, tool_input=call.input
-    )
+    ctx = WardenVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
     out = opts.on_policy_error(error, ctx)
     if asyncio.iscoroutine(out):
         await out
@@ -366,9 +358,7 @@ def _fire_policy_error_sync(
 ) -> None:
     if opts.on_policy_error is None:
         return
-    ctx = WardenVerdictContext(
-        tool_name=call.name, tool_use_id=call.id, tool_input=call.input
-    )
+    ctx = WardenVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
     out = opts.on_policy_error(error, ctx)
     if asyncio.iscoroutine(out):
         raise WardenConfigError(
@@ -380,9 +370,7 @@ def _fire_policy_error_sync(
 async def _process_verdict(
     verdict: Any, call: NormalizedToolCall, opts: WardenOptions, enforce: bool
 ) -> None:
-    ctx = WardenVerdictContext(
-        tool_name=call.name, tool_use_id=call.id, tool_input=call.input
-    )
+    ctx = WardenVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
     if opts.on_verdict is not None:
         out = opts.on_verdict(verdict, ctx)
         if asyncio.iscoroutine(out):
@@ -414,9 +402,7 @@ async def _process_verdict(
 def _process_verdict_sync(
     verdict: Any, call: NormalizedToolCall, opts: WardenOptions, enforce: bool
 ) -> None:
-    ctx = WardenVerdictContext(
-        tool_name=call.name, tool_use_id=call.id, tool_input=call.input
-    )
+    ctx = WardenVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
     if opts.on_verdict is not None:
         out = opts.on_verdict(verdict, ctx)
         if asyncio.iscoroutine(out):

@@ -85,9 +85,7 @@ async def main() -> None:
                 {"type": "bash_20250124", "name": "bash"},
                 {"type": "text_editor_20250124", "name": "str_replace_editor"},
             ],
-            messages=[
-                {"role": "user", "content": "Clean up the staging directory."}
-            ],
+            messages=[{"role": "user", "content": "Clean up the staging directory."}],
         )
         names = ", ".join(getattr(b, "type", "?") for b in msg.content)
         print(f"green — content blocks: {names}")

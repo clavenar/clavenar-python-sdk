@@ -171,11 +171,13 @@ def make_anthropic_tool_use_events(
         },
     ]
     for chunk in chunks:
-        events.append({
-            "type": "content_block_delta",
-            "index": block_index,
-            "delta": {"type": "input_json_delta", "partial_json": chunk},
-        })
+        events.append(
+            {
+                "type": "content_block_delta",
+                "index": block_index,
+                "delta": {"type": "input_json_delta", "partial_json": chunk},
+            }
+        )
     events.append({"type": "content_block_stop", "index": block_index})
     events.append({"type": "message_stop"})
     return events
@@ -209,25 +211,29 @@ def make_openai_tool_call_chunks(
         }
     ]
     for chunk in chunks:
-        out.append({
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {
-                        "tool_calls": [
-                            {
-                                "index": 0,
-                                "function": {"arguments": chunk},
-                            }
-                        ]
-                    },
-                    "finish_reason": None,
-                }
-            ],
-        })
-    out.append({
-        "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
-    })
+        out.append(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "function": {"arguments": chunk},
+                                }
+                            ]
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
+    out.append(
+        {
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+        }
+    )
     return out
 
 

@@ -162,9 +162,7 @@ def _wrap_openai_sync(client: Any, opts: WardenOptions) -> Any:
     return client
 
 
-async def _inspect_all_async(
-    calls: list[NormalizedToolCall], opts: WardenOptions
-) -> None:
+async def _inspect_all_async(calls: list[NormalizedToolCall], opts: WardenOptions) -> None:
     """Inspect all tool calls concurrently via `asyncio.gather`; fire
     callbacks in submission order; raise on the first deny/pending.
     Observe-mode transport errors are caught per-call.
@@ -202,9 +200,7 @@ async def _inspect_all_async(
         _raise_for_verdict_async(verdict, call, opts)
 
 
-def _raise_for_verdict_async(
-    verdict: Any, call: NormalizedToolCall, opts: WardenOptions
-) -> None:
+def _raise_for_verdict_async(verdict: Any, call: NormalizedToolCall, opts: WardenOptions) -> None:
     if verdict.kind == "deny":
         raise WardenDenied(
             tool_name=call.name,
@@ -227,9 +223,7 @@ def _raise_for_verdict_async(
         )
 
 
-def _inspect_all_sync(
-    calls: list[NormalizedToolCall], opts: WardenOptions
-) -> None:
+def _inspect_all_sync(calls: list[NormalizedToolCall], opts: WardenOptions) -> None:
     """Sync mirror of `_inspect_all_async`. Inspections run serially —
     `asyncio.gather` has no sync equivalent and threading for I/O here
     isn't worth the complexity for the 1-3 tool calls a typical turn
@@ -275,9 +269,7 @@ def _inspect_all_sync(
         _raise_for_verdict_sync(verdict, call, opts)
 
 
-def _raise_for_verdict_sync(
-    verdict: Any, call: NormalizedToolCall, opts: WardenOptions
-) -> None:
+def _raise_for_verdict_sync(verdict: Any, call: NormalizedToolCall, opts: WardenOptions) -> None:
     if verdict.kind == "deny":
         raise WardenDenied(
             tool_name=call.name,
@@ -331,9 +323,7 @@ def _validate_options(opts: WardenOptions) -> None:
         raise WardenConfigError("warden_wrap: opts.endpoint is required")
     parsed = urlparse(opts.endpoint)
     if not parsed.scheme or not parsed.netloc:
-        raise WardenConfigError(
-            f"warden_wrap: opts.endpoint is not a valid URL: {opts.endpoint!r}"
-        )
+        raise WardenConfigError(f"warden_wrap: opts.endpoint is not a valid URL: {opts.endpoint!r}")
     if opts.timeout_s <= 0:
         raise WardenConfigError(
             f"warden_wrap: opts.timeout_s must be positive (got {opts.timeout_s})"
@@ -344,11 +334,9 @@ def _validate_options(opts: WardenOptions) -> None:
         )
     if opts.retry.max_attempts < 1:
         raise WardenConfigError(
-            f"warden_wrap: opts.retry.max_attempts must be >= 1 "
-            f"(got {opts.retry.max_attempts})"
+            f"warden_wrap: opts.retry.max_attempts must be >= 1 (got {opts.retry.max_attempts})"
         )
     if opts.retry.base_delay_s < 0:
         raise WardenConfigError(
-            f"warden_wrap: opts.retry.base_delay_s must be >= 0 "
-            f"(got {opts.retry.base_delay_s})"
+            f"warden_wrap: opts.retry.base_delay_s must be >= 0 (got {opts.retry.base_delay_s})"
         )

@@ -47,9 +47,7 @@ def _view(decision: str | None, corr: str = "corr-001", note: str | None = None)
 
 @respx.mock
 async def test_resolve_returns_when_operator_approves() -> None:
-    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
-        return_value=httpx.Response(202, json=_pending_body())
-    )
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(202, json=_pending_body()))
     respx.get(f"{FAKE_ENDPOINT}/pending/corr-001").mock(
         side_effect=[
             httpx.Response(200, json=_view(None)),  # still pending
@@ -65,9 +63,7 @@ async def test_resolve_returns_when_operator_approves() -> None:
 
 @respx.mock
 async def test_resolve_raises_warden_denied_when_operator_denies() -> None:
-    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
-        return_value=httpx.Response(202, json=_pending_body())
-    )
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(202, json=_pending_body()))
     respx.get(f"{FAKE_ENDPOINT}/pending/corr-001").mock(
         return_value=httpx.Response(200, json=_view("deny", note="too risky"))
     )
@@ -83,9 +79,7 @@ async def test_resolve_raises_warden_denied_when_operator_denies() -> None:
 
 @respx.mock
 async def test_resolve_swallows_transient_5xx() -> None:
-    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
-        return_value=httpx.Response(202, json=_pending_body())
-    )
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(202, json=_pending_body()))
     respx.get(f"{FAKE_ENDPOINT}/pending/corr-001").mock(
         side_effect=[
             httpx.Response(500),
@@ -102,12 +96,8 @@ async def test_resolve_swallows_transient_5xx() -> None:
 
 @respx.mock
 async def test_resolve_propagates_terminal_404() -> None:
-    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
-        return_value=httpx.Response(202, json=_pending_body())
-    )
-    respx.get(f"{FAKE_ENDPOINT}/pending/corr-001").mock(
-        return_value=httpx.Response(404)
-    )
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(202, json=_pending_body()))
+    respx.get(f"{FAKE_ENDPOINT}/pending/corr-001").mock(return_value=httpx.Response(404))
     opts = WardenOptions(endpoint=FAKE_ENDPOINT, mode="enforce", timeout_s=2.0)
     client = warden_wrap(_anthropic(make_anthropic_message_with_tool_use()), opts)
     with pytest.raises(WardenPending) as exc:
@@ -119,9 +109,7 @@ async def test_resolve_propagates_terminal_404() -> None:
 
 @respx.mock
 async def test_resolve_times_out() -> None:
-    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
-        return_value=httpx.Response(202, json=_pending_body())
-    )
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(202, json=_pending_body()))
     respx.get(f"{FAKE_ENDPOINT}/pending/corr-001").mock(
         return_value=httpx.Response(200, json=_view(None))
     )

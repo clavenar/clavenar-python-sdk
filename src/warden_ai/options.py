@@ -65,9 +65,9 @@ class WardenOptions:
     token: str | None = None
     mode: WardenMode = "enforce"
     timeout_s: float = 10.0
-    on_verdict: (
-        Callable[[WardenVerdict, WardenVerdictContext], Awaitable[None] | None] | None
-    ) = None
+    on_verdict: Callable[[WardenVerdict, WardenVerdictContext], Awaitable[None] | None] | None = (
+        None
+    )
     on_policy_error: (
         Callable[
             [WardenTransportError, WardenVerdictContext],
