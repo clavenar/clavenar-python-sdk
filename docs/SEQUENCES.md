@@ -37,7 +37,7 @@ sequenceDiagram
     participant V as _validate_options
     participant D as _detect_client
     participant Insp as inspect.iscoroutinefunction
-    participant Patch as _wrap_&lt;kind&gt;_&lt;mode&gt;
+    participant Patch as _wrap_kind_mode
 
     Caller->>Wrap: warden_wrap(client, WardenOptions(endpoint, token?, mode?, timeout_s?, on_verdict?, on_policy_error?, extra_headers?, retry?))
     Wrap->>V: _validate_options(opts)
@@ -121,10 +121,10 @@ sequenceDiagram
             T->>T: _parse_deny_body — error security_violation + reasons + review_reasons + intent_category
             T-->>Insp: _Deny(reasons, review_reasons, intent_category, correlation_id)
         else 202
-            T->>T: _parse_pending_body; corr = header OR body.correlation_id else WardenTransportError 202
+            T->>T: _parse_pending_body — corr = header OR body.correlation_id else WardenTransportError 202
             T-->>Insp: _Pending(correlation_id, review_reasons)
         else 5xx OR httpx.TimeoutException OR httpx.HTTPError
-            T->>T: raise WardenTransportError; _is_retriable true for None status OR 5xx then sleep _backoff_s
+            T->>T: raise WardenTransportError — _is_retriable true for None status OR 5xx then sleep _backoff_s
             alt enforce mode (Sec 6 flowchart)
                 T-->>Insp: raise after final attempt
             else observe mode
@@ -191,7 +191,7 @@ sequenceDiagram
             alt deltas is list
                 loop every d in deltas
                     Gen->>Acc: _accumulate_openai(bufs, choice_idx, d)
-                    Acc->>Acc: setdefault _ChoiceBufs; setdefault _ToolBuf at tool_idx; buf.id, buf.name, buf.args_buf += partial
+                    Acc->>Acc: setdefault _ChoiceBufs — setdefault _ToolBuf at tool_idx — buf.id, buf.name, buf.args_buf += partial
                 end
             end
             alt _evt(choice, finish_reason) == 'tool_calls'
@@ -200,7 +200,7 @@ sequenceDiagram
         end
         loop every choice_idx queued for inspection (BEFORE yielding chunk)
             Gen->>Drain: _drain_openai_choice(bufs, choice_idx)
-            Drain->>Drain: pop _ChoiceBufs; for each _ToolBuf — if id or name missing raise WardenConfigError; json.loads(args_buf) or fall back to dict
+            Drain->>Drain: pop _ChoiceBufs — for each _ToolBuf — if id or name missing raise WardenConfigError — json.loads(args_buf) or fall back to dict
             Drain-->>Gen: list[NormalizedToolCall]
             Gen->>Batch: _inspect_choice_batch(calls, opts, enforce)
             par asyncio.gather per call
@@ -211,19 +211,19 @@ sequenceDiagram
             end
             loop results in submission order
                 alt result is WardenTransportError (observe)
-                    Batch->>Caller: await _fire_policy_error(e, ctx); continue
+                    Batch->>Caller: await _fire_policy_error(e, ctx) — continue
                 else enforce AND deny
                     Batch-->>Caller: raise WardenDenied — chunk never yielded
                 else enforce AND pending
                     Batch-->>Caller: raise WardenPending — closure carries poll_once
                 else
-                    Batch->>Caller: await on_verdict if set; continue
+                    Batch->>Caller: await on_verdict if set — continue
                 end
             end
         end
         Gen-->>Caller: yield chunk (only reached if no enforce raise fired)
     end
-    Note over Gen,Caller: Anthropic content_block_stop and the two sync streams follow the same shape;<br/>sync variants use a serial for-loop instead of asyncio.gather
+    Note over Gen,Caller: Anthropic content_block_stop and the two sync streams follow the same shape —<br/>sync variants use a serial for-loop instead of asyncio.gather
 ```
 
 ## 4. `WardenPending.resolve` — poll until decided, terminal vs transient errors
@@ -282,9 +282,9 @@ sequenceDiagram
             Hx-->>T: exception
             T-->>Poll: raise WardenTransportError
             Poll-->>Pending: WardenTransportError (other or no status)
-            Pending->>Pending: swallow; view stays None
+            Pending->>Pending: swallow — view stays None
         end
-        Pending->>Pending: remaining = deadline - time.monotonic(); break if <= 0
+        Pending->>Pending: remaining = deadline - time.monotonic() — break if <= 0
         Pending->>Pending: await asyncio.sleep(min(poll_interval_s, remaining))
     end
     Pending-->>Partner: raise WardenTransportError — warden pending {id} not decided within {timeout_s}s
@@ -320,7 +320,7 @@ sequenceDiagram
     Guard-->>Partner: True (type matches AND call_id/arguments/name are str)
     Partner->>Helper: await inspect_realtime_function_call(evt, opts)
     Helper->>Norm: normalize_realtime_function_call(evt)
-    Norm->>Norm: input = json.loads(evt.arguments); on JSONDecodeError input = evt.arguments (raw string)
+    Norm->>Norm: input = json.loads(evt.arguments) — on JSONDecodeError input = evt.arguments (raw string)
     Norm-->>Helper: NormalizedToolCall(id=evt.call_id, name=evt.name, input)
     Helper->>T: inspect_tool_use(call, opts)
     T->>L: POST /mcp (same envelope and retry as Sec 2)
@@ -361,7 +361,7 @@ flowchart TD
     Shape1 -->|yes| Stream1[wrap async generator<br/>accumulate per index<br/>inspect on content_block_stop OR finish_reason tool_calls]
 
     Shape2 -->|no| Sync2[extract NormalizedToolCalls — same shape]
-    Shape2 -->|yes| Stream2[wrap sync generator — same shape; serial inspect instead of gather]
+    Shape2 -->|yes| Stream2[wrap sync generator — same shape — serial inspect instead of gather]
 
     Sync1 --> Loop1[_inspect_all_async — asyncio.gather per call<br/>consume in submission order]
     Stream1 --> Loop1
