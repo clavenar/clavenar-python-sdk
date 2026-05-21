@@ -4,6 +4,13 @@ Wrap your [Anthropic][anthropic] / [OpenAI][openai] Python client —
 async or sync. Every tool call the model emits is inspected by
 [Agent Warden][warden] before the agent loop can run it.
 
+Sequence diagrams for the five primary paths — `warden_wrap` boot
+with sync/async fork, async non-streaming inspection, async
+streaming choice-end gating, `WardenPending.resolve` poll loop, and
+the standalone OpenAI Realtime helper — plus a request
+decision-tree flowchart, live in
+[`docs/SEQUENCES.md`](docs/SEQUENCES.md).
+
 ```python
 import asyncio
 from anthropic import AsyncAnthropic
