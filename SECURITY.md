@@ -43,7 +43,7 @@ Out of scope:
 - Issues in `httpx`, `anthropic`, or `openai` upstream — please report
   to those projects directly. We track CVE advisories that affect
   pinned versions in `CHANGELOG.md`.
-- Findings against the demo flow on `console-demo.vanteguardlabs.com`
+- Findings against the demo flow on `demo.clavenar.com`
   when caused by demo-specific configuration (the demo accepts
   `X-Clavenar-Demo-Prefix` headers visitors mint themselves).
 

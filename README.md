@@ -182,4 +182,4 @@ Apache-2.0.
 
 [anthropic]: https://github.com/anthropics/anthropic-sdk-python
 [openai]: https://github.com/openai/openai-python
-[clavenar]: https://warden.vanteguardlabs.com
+[clavenar]: https://clavenar.com
