@@ -1,7 +1,7 @@
 """Streaming wrappers for Anthropic + OpenAI.
 
 The closing event (`content_block_stop` / `finish_reason='tool_calls'`)
-is held until warden verdicts return; a denied call raises
+is held until clavenar verdicts return; a denied call raises
 mid-iteration before partner code can act on it.
 """
 
@@ -17,13 +17,13 @@ from conftest import (
     make_openai_tool_call_chunks,
 )
 
-from warden_ai.errors import WardenDenied, WardenPending
-from warden_ai.options import WardenOptions
-from warden_ai.stream import wrap_anthropic_stream, wrap_openai_chat_stream
+from clavenar_ai.errors import ClavenarDenied, ClavenarPending
+from clavenar_ai.options import ClavenarOptions
+from clavenar_ai.stream import wrap_anthropic_stream, wrap_openai_chat_stream
 
 
-def _enforce() -> WardenOptions:
-    return WardenOptions(endpoint=FAKE_ENDPOINT, mode="enforce", timeout_s=2.0)
+def _enforce() -> ClavenarOptions:
+    return ClavenarOptions(endpoint=FAKE_ENDPOINT, mode="enforce", timeout_s=2.0)
 
 
 # ---- Anthropic streams ----------------------------------------------------
@@ -61,7 +61,7 @@ async def test_anthropic_stream_deny_raises_before_content_block_stop() -> None:
     )
     events = make_anthropic_tool_use_events(tool_name="rm_rf")
     seen: list[str] = []
-    with pytest.raises(WardenDenied) as exc:
+    with pytest.raises(ClavenarDenied) as exc:
         async for ev in wrap_anthropic_stream(async_iter(events), _enforce()):
             seen.append(ev["type"])
     assert exc.value.tool_name == "rm_rf"
@@ -72,7 +72,7 @@ async def test_anthropic_stream_deny_raises_before_content_block_stop() -> None:
 
 
 @respx.mock
-async def test_anthropic_stream_pending_raises_warden_pending() -> None:
+async def test_anthropic_stream_pending_raises_clavenar_pending() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
         return_value=httpx.Response(
             202,
@@ -84,7 +84,7 @@ async def test_anthropic_stream_pending_raises_warden_pending() -> None:
         )
     )
     events = make_anthropic_tool_use_events()
-    with pytest.raises(WardenPending) as exc:
+    with pytest.raises(ClavenarPending) as exc:
         async for _ in wrap_anthropic_stream(async_iter(events), _enforce()):
             pass
     assert exc.value.correlation_id == "corr-x"
@@ -110,7 +110,7 @@ async def test_anthropic_stream_observe_deny_passes_through() -> None:
     async def on_verdict(verdict, ctx) -> None:  # type: ignore[no-untyped-def]
         seen_verdicts.append(f"{verdict.kind}:{ctx.tool_name}")
 
-    opts = WardenOptions(
+    opts = ClavenarOptions(
         endpoint=FAKE_ENDPOINT, mode="observe", timeout_s=2.0, on_verdict=on_verdict
     )
     async for ev in wrap_anthropic_stream(async_iter(events), opts):
@@ -173,7 +173,7 @@ async def test_openai_stream_deny_raises_before_finish_chunk() -> None:
     )
     chunks = make_openai_tool_call_chunks(name="drop_table")
     seen: list[dict] = []
-    with pytest.raises(WardenDenied) as exc:
+    with pytest.raises(ClavenarDenied) as exc:
         async for c in wrap_openai_chat_stream(async_iter(chunks), _enforce()):
             seen.append(c)
     assert exc.value.tool_name == "drop_table"
@@ -193,7 +193,7 @@ async def test_openai_stream_observe_transport_error_routes_to_callback() -> Non
     async def on_policy_error(err, ctx) -> None:  # type: ignore[no-untyped-def]
         errors.append(f"{ctx.tool_name}:{err.status}")
 
-    opts = WardenOptions(
+    opts = ClavenarOptions(
         endpoint=FAKE_ENDPOINT,
         mode="observe",
         timeout_s=2.0,

@@ -1,5 +1,5 @@
 """Wrap an Anthropic / OpenAI client so every tool call is inspected
-by warden before the caller sees it.
+by clavenar before the caller sees it.
 
 Detection is structural and runs once at wrap time:
 
@@ -17,7 +17,7 @@ and `asyncio.sleep`.
 
 Streaming (`stream=True`) is intercepted: each event/chunk is passed
 through in order, but the closing event (Anthropic `content_block_stop`,
-OpenAI `finish_reason='tool_calls'`) is held until warden verdicts
+OpenAI `finish_reason='tool_calls'`) is held until clavenar verdicts
 land — a denied call raises mid-iteration before the partner can act
 on it. See `stream.py`.
 """
@@ -30,22 +30,22 @@ from collections.abc import AsyncIterable, Iterable
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from warden_ai._anthropic import extract_tool_uses
-from warden_ai._openai import extract_tool_calls
-from warden_ai.errors import (
-    WardenConfigError,
-    WardenDenied,
-    WardenPending,
-    WardenTransportError,
+from clavenar_ai._anthropic import extract_tool_uses
+from clavenar_ai._openai import extract_tool_calls
+from clavenar_ai.errors import (
+    ClavenarConfigError,
+    ClavenarDenied,
+    ClavenarPending,
+    ClavenarTransportError,
 )
-from warden_ai.options import WardenOptions, WardenVerdictContext
-from warden_ai.stream import (
+from clavenar_ai.options import ClavenarOptions, ClavenarVerdictContext
+from clavenar_ai.stream import (
     wrap_anthropic_stream,
     wrap_anthropic_stream_sync,
     wrap_openai_chat_stream,
     wrap_openai_chat_stream_sync,
 )
-from warden_ai.transport import (
+from clavenar_ai.transport import (
     NormalizedToolCall,
     inspect_tool_use,
     inspect_tool_use_sync,
@@ -57,7 +57,7 @@ ClientKind = Literal["anthropic", "openai"]
 ClientMode = Literal["async", "sync"]
 
 
-def warden_wrap(client: Any, opts: WardenOptions) -> Any:
+def clavenar_wrap(client: Any, opts: ClavenarOptions) -> Any:
     """Wrap an async or sync Anthropic / OpenAI client.
 
     The wrap is in-place — we monkeypatch the `.create` attribute on
@@ -79,7 +79,7 @@ def warden_wrap(client: Any, opts: WardenOptions) -> Any:
 
 def _detect_client(client: Any) -> tuple[ClientKind, ClientMode]:
     if client is None:
-        raise WardenConfigError("warden_wrap: client must not be None")
+        raise ClavenarConfigError("clavenar_wrap: client must not be None")
 
     messages = getattr(client, "messages", None)
     if messages is not None:
@@ -96,13 +96,13 @@ def _detect_client(client: Any) -> tuple[ClientKind, ClientMode]:
             mode = "async" if inspect_mod.iscoroutinefunction(create) else "sync"
             return "openai", mode
 
-    raise WardenConfigError(
-        "warden_wrap: client must expose messages.create (Anthropic) or "
+    raise ClavenarConfigError(
+        "clavenar_wrap: client must expose messages.create (Anthropic) or "
         "chat.completions.create (OpenAI)"
     )
 
 
-def _wrap_anthropic_async(client: Any, opts: WardenOptions) -> Any:
+def _wrap_anthropic_async(client: Any, opts: ClavenarOptions) -> Any:
     inner = client.messages.create
 
     async def create_wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -117,7 +117,7 @@ def _wrap_anthropic_async(client: Any, opts: WardenOptions) -> Any:
     return client
 
 
-def _wrap_anthropic_sync(client: Any, opts: WardenOptions) -> Any:
+def _wrap_anthropic_sync(client: Any, opts: ClavenarOptions) -> Any:
     inner = client.messages.create
 
     def create_wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -132,7 +132,7 @@ def _wrap_anthropic_sync(client: Any, opts: WardenOptions) -> Any:
     return client
 
 
-def _wrap_openai_async(client: Any, opts: WardenOptions) -> Any:
+def _wrap_openai_async(client: Any, opts: ClavenarOptions) -> Any:
     inner = client.chat.completions.create
 
     async def create_wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -147,7 +147,7 @@ def _wrap_openai_async(client: Any, opts: WardenOptions) -> Any:
     return client
 
 
-def _wrap_openai_sync(client: Any, opts: WardenOptions) -> Any:
+def _wrap_openai_sync(client: Any, opts: ClavenarOptions) -> Any:
     inner = client.chat.completions.create
 
     def create_wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -162,7 +162,7 @@ def _wrap_openai_sync(client: Any, opts: WardenOptions) -> Any:
     return client
 
 
-async def _inspect_all_async(calls: list[NormalizedToolCall], opts: WardenOptions) -> None:
+async def _inspect_all_async(calls: list[NormalizedToolCall], opts: ClavenarOptions) -> None:
     """Inspect all tool calls concurrently via `asyncio.gather`; fire
     callbacks in submission order; raise on the first deny/pending.
     Observe-mode transport errors are caught per-call.
@@ -175,7 +175,7 @@ async def _inspect_all_async(calls: list[NormalizedToolCall], opts: WardenOption
         try:
             verdict = await inspect_tool_use(call, opts)
             return call, verdict
-        except WardenTransportError as e:
+        except ClavenarTransportError as e:
             if not enforce:
                 return call, e
             raise
@@ -183,12 +183,12 @@ async def _inspect_all_async(calls: list[NormalizedToolCall], opts: WardenOption
     results = await asyncio.gather(*(one(c) for c in calls))
 
     for call, result in results:
-        ctx = WardenVerdictContext(
+        ctx = ClavenarVerdictContext(
             tool_name=call.name,
             tool_use_id=call.id,
             tool_input=call.input,
         )
-        if isinstance(result, WardenTransportError):
+        if isinstance(result, ClavenarTransportError):
             if opts.on_policy_error is not None:
                 await _maybe_await(opts.on_policy_error(result, ctx))
             continue
@@ -200,9 +200,9 @@ async def _inspect_all_async(calls: list[NormalizedToolCall], opts: WardenOption
         _raise_for_verdict_async(verdict, call, opts)
 
 
-def _raise_for_verdict_async(verdict: Any, call: NormalizedToolCall, opts: WardenOptions) -> None:
+def _raise_for_verdict_async(verdict: Any, call: NormalizedToolCall, opts: ClavenarOptions) -> None:
     if verdict.kind == "deny":
-        raise WardenDenied(
+        raise ClavenarDenied(
             tool_name=call.name,
             reasons=verdict.reasons,
             review_reasons=verdict.review_reasons,
@@ -215,7 +215,7 @@ def _raise_for_verdict_async(verdict: Any, call: NormalizedToolCall, opts: Warde
         async def _poll(corr_id: str = corr) -> Any:
             return await poll_pending_once(corr_id, opts)
 
-        raise WardenPending(
+        raise ClavenarPending(
             tool_name=call.name,
             correlation_id=verdict.correlation_id,
             review_reasons=verdict.review_reasons,
@@ -223,7 +223,7 @@ def _raise_for_verdict_async(verdict: Any, call: NormalizedToolCall, opts: Warde
         )
 
 
-def _inspect_all_sync(calls: list[NormalizedToolCall], opts: WardenOptions) -> None:
+def _inspect_all_sync(calls: list[NormalizedToolCall], opts: ClavenarOptions) -> None:
     """Sync mirror of `_inspect_all_async`. Inspections run serially —
     `asyncio.gather` has no sync equivalent and threading for I/O here
     isn't worth the complexity for the 1-3 tool calls a typical turn
@@ -236,22 +236,22 @@ def _inspect_all_sync(calls: list[NormalizedToolCall], opts: WardenOptions) -> N
     for c in calls:
         try:
             results.append((c, inspect_tool_use_sync(c, opts)))
-        except WardenTransportError as e:
+        except ClavenarTransportError as e:
             if not enforce:
                 results.append((c, e))
                 continue
             raise
     for call, result in results:
-        ctx = WardenVerdictContext(
+        ctx = ClavenarVerdictContext(
             tool_name=call.name,
             tool_use_id=call.id,
             tool_input=call.input,
         )
-        if isinstance(result, WardenTransportError):
+        if isinstance(result, ClavenarTransportError):
             if opts.on_policy_error is not None:
                 out = opts.on_policy_error(result, ctx)
                 if asyncio.iscoroutine(out):
-                    raise WardenConfigError(
+                    raise ClavenarConfigError(
                         "on_policy_error returned a coroutine but the client is "
                         "sync; use a sync callback for sync clients"
                     )
@@ -260,7 +260,7 @@ def _inspect_all_sync(calls: list[NormalizedToolCall], opts: WardenOptions) -> N
         if opts.on_verdict is not None:
             out = opts.on_verdict(verdict, ctx)
             if asyncio.iscoroutine(out):
-                raise WardenConfigError(
+                raise ClavenarConfigError(
                     "on_verdict returned a coroutine but the client is sync; "
                     "use a sync callback for sync clients"
                 )
@@ -269,9 +269,9 @@ def _inspect_all_sync(calls: list[NormalizedToolCall], opts: WardenOptions) -> N
         _raise_for_verdict_sync(verdict, call, opts)
 
 
-def _raise_for_verdict_sync(verdict: Any, call: NormalizedToolCall, opts: WardenOptions) -> None:
+def _raise_for_verdict_sync(verdict: Any, call: NormalizedToolCall, opts: ClavenarOptions) -> None:
     if verdict.kind == "deny":
-        raise WardenDenied(
+        raise ClavenarDenied(
             tool_name=call.name,
             reasons=verdict.reasons,
             review_reasons=verdict.review_reasons,
@@ -284,7 +284,7 @@ def _raise_for_verdict_sync(verdict: Any, call: NormalizedToolCall, opts: Warden
         async def _poll(corr_id: str = corr) -> Any:
             return poll_pending_once_sync(corr_id, opts)
 
-        raise WardenPending(
+        raise ClavenarPending(
             tool_name=call.name,
             correlation_id=verdict.correlation_id,
             review_reasons=verdict.review_reasons,
@@ -318,25 +318,25 @@ def _is_iterable_non_message(v: Any) -> bool:
     return isinstance(v, Iterable)
 
 
-def _validate_options(opts: WardenOptions) -> None:
+def _validate_options(opts: ClavenarOptions) -> None:
     if not opts.endpoint:
-        raise WardenConfigError("warden_wrap: opts.endpoint is required")
+        raise ClavenarConfigError("clavenar_wrap: opts.endpoint is required")
     parsed = urlparse(opts.endpoint)
     if not parsed.scheme or not parsed.netloc:
-        raise WardenConfigError(f"warden_wrap: opts.endpoint is not a valid URL: {opts.endpoint!r}")
+        raise ClavenarConfigError(f"clavenar_wrap: opts.endpoint is not a valid URL: {opts.endpoint!r}")
     if opts.timeout_s <= 0:
-        raise WardenConfigError(
-            f"warden_wrap: opts.timeout_s must be positive (got {opts.timeout_s})"
+        raise ClavenarConfigError(
+            f"clavenar_wrap: opts.timeout_s must be positive (got {opts.timeout_s})"
         )
     if opts.mode not in ("enforce", "observe"):
-        raise WardenConfigError(
-            f"warden_wrap: opts.mode must be 'enforce' or 'observe' (got {opts.mode!r})"
+        raise ClavenarConfigError(
+            f"clavenar_wrap: opts.mode must be 'enforce' or 'observe' (got {opts.mode!r})"
         )
     if opts.retry.max_attempts < 1:
-        raise WardenConfigError(
-            f"warden_wrap: opts.retry.max_attempts must be >= 1 (got {opts.retry.max_attempts})"
+        raise ClavenarConfigError(
+            f"clavenar_wrap: opts.retry.max_attempts must be >= 1 (got {opts.retry.max_attempts})"
         )
     if opts.retry.base_delay_s < 0:
-        raise WardenConfigError(
-            f"warden_wrap: opts.retry.base_delay_s must be >= 0 (got {opts.retry.base_delay_s})"
+        raise ClavenarConfigError(
+            f"clavenar_wrap: opts.retry.base_delay_s must be >= 0 (got {opts.retry.base_delay_s})"
         )

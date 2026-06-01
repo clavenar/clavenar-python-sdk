@@ -1,5 +1,5 @@
 """Retry semantics: 5xx and network errors retry per
-`WardenRetryOptions`; 200/403/202 and 4xx other than 5xx never retry.
+`ClavenarRetryOptions`; 200/403/202 and 4xx other than 5xx never retry.
 """
 
 from __future__ import annotations
@@ -9,9 +9,9 @@ import pytest
 import respx
 from conftest import FAKE_ENDPOINT
 
-from warden_ai.errors import WardenTransportError
-from warden_ai.options import WardenOptions, WardenRetryOptions
-from warden_ai.transport import NormalizedToolCall, inspect_tool_use
+from clavenar_ai.errors import ClavenarTransportError
+from clavenar_ai.options import ClavenarOptions, ClavenarRetryOptions
+from clavenar_ai.transport import NormalizedToolCall, inspect_tool_use
 
 
 def _call() -> NormalizedToolCall:
@@ -27,10 +27,10 @@ async def test_retries_502_then_succeeds() -> None:
             httpx.Response(200),
         ]
     )
-    opts = WardenOptions(
+    opts = ClavenarOptions(
         endpoint=FAKE_ENDPOINT,
         timeout_s=2.0,
-        retry=WardenRetryOptions(max_attempts=3, base_delay_s=0.001),
+        retry=ClavenarRetryOptions(max_attempts=3, base_delay_s=0.001),
     )
     verdict = await inspect_tool_use(_call(), opts)
     assert verdict.kind == "allow"
@@ -40,12 +40,12 @@ async def test_retries_502_then_succeeds() -> None:
 @respx.mock
 async def test_retries_exhausted_raises_last_error() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(502, text="bg"))
-    opts = WardenOptions(
+    opts = ClavenarOptions(
         endpoint=FAKE_ENDPOINT,
         timeout_s=2.0,
-        retry=WardenRetryOptions(max_attempts=2, base_delay_s=0.001),
+        retry=ClavenarRetryOptions(max_attempts=2, base_delay_s=0.001),
     )
-    with pytest.raises(WardenTransportError) as exc:
+    with pytest.raises(ClavenarTransportError) as exc:
         await inspect_tool_use(_call(), opts)
     assert exc.value.status == 502
 
@@ -63,10 +63,10 @@ async def test_403_does_not_retry() -> None:
             },
         )
     )
-    opts = WardenOptions(
+    opts = ClavenarOptions(
         endpoint=FAKE_ENDPOINT,
         timeout_s=2.0,
-        retry=WardenRetryOptions(max_attempts=5, base_delay_s=0.001),
+        retry=ClavenarRetryOptions(max_attempts=5, base_delay_s=0.001),
     )
     verdict = await inspect_tool_use(_call(), opts)
     assert verdict.kind == "deny"
@@ -76,12 +76,12 @@ async def test_403_does_not_retry() -> None:
 @respx.mock
 async def test_401_does_not_retry() -> None:
     route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(401, text="auth"))
-    opts = WardenOptions(
+    opts = ClavenarOptions(
         endpoint=FAKE_ENDPOINT,
         timeout_s=2.0,
-        retry=WardenRetryOptions(max_attempts=5, base_delay_s=0.001),
+        retry=ClavenarRetryOptions(max_attempts=5, base_delay_s=0.001),
     )
-    with pytest.raises(WardenTransportError) as exc:
+    with pytest.raises(ClavenarTransportError) as exc:
         await inspect_tool_use(_call(), opts)
     assert exc.value.status == 401
     assert route.call_count == 1
@@ -92,10 +92,10 @@ async def test_network_failure_retries() -> None:
     route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
         side_effect=[httpx.ConnectError("boom"), httpx.Response(200)]
     )
-    opts = WardenOptions(
+    opts = ClavenarOptions(
         endpoint=FAKE_ENDPOINT,
         timeout_s=2.0,
-        retry=WardenRetryOptions(max_attempts=2, base_delay_s=0.001),
+        retry=ClavenarRetryOptions(max_attempts=2, base_delay_s=0.001),
     )
     verdict = await inspect_tool_use(_call(), opts)
     assert verdict.kind == "allow"
@@ -105,11 +105,11 @@ async def test_network_failure_retries() -> None:
 @respx.mock
 async def test_max_attempts_1_disables_retry() -> None:
     route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(502, text="bg"))
-    opts = WardenOptions(
+    opts = ClavenarOptions(
         endpoint=FAKE_ENDPOINT,
         timeout_s=2.0,
-        retry=WardenRetryOptions(max_attempts=1, base_delay_s=0.001),
+        retry=ClavenarRetryOptions(max_attempts=1, base_delay_s=0.001),
     )
-    with pytest.raises(WardenTransportError):
+    with pytest.raises(ClavenarTransportError):
         await inspect_tool_use(_call(), opts)
     assert route.call_count == 1

@@ -1,8 +1,8 @@
-"""OpenAI Realtime + warden — gate tool calls a voice / streaming
+"""OpenAI Realtime + clavenar — gate tool calls a voice / streaming
 agent emits over the Realtime websocket.
 
 The Realtime API is websocket-based; there's no ``client.method()``
-for :func:`warden_wrap` to intercept. Drain the server-event stream
+for :func:`clavenar_wrap` to intercept. Drain the server-event stream
 yourself; for each ``response.function_call_arguments.done`` event,
 run it through :func:`inspect_realtime_function_call` before
 dispatching the handler. Deltas are ignored — by the time ``done``
@@ -10,7 +10,7 @@ arrives, the model has committed and the full argument payload is
 present.
 
 Usage:
-    pip install warden-ai websockets
+    pip install clavenar-ai websockets
     python examples/openai_realtime_recipe.py
 """
 
@@ -21,8 +21,8 @@ import json
 import os
 from typing import Any
 
-from warden_ai import (
-    WardenOptions,
+from clavenar_ai import (
+    ClavenarOptions,
     inspect_realtime_function_call,
     is_realtime_function_call_done,
 )
@@ -39,16 +39,16 @@ class _StubRealtimeWebSocket:
 
 
 async def main() -> None:
-    options = WardenOptions(
-        endpoint=os.environ.get("WARDEN_LITE_URL", "http://localhost:8088"),
-        token=os.environ.get("WARDEN_LITE_TOKEN", "demo-token"),
+    options = ClavenarOptions(
+        endpoint=os.environ.get("CLAVENAR_LITE_URL", "http://localhost:8088"),
+        token=os.environ.get("CLAVENAR_LITE_TOKEN", "demo-token"),
         mode="enforce",
     )
 
     ws = _StubRealtimeWebSocket()
 
     # Stub events: response.output_item.added announces the call,
-    # deltas accumulate the args, done is the terminal event warden
+    # deltas accumulate the args, done is the terminal event clavenar
     # inspects.
     events: list[dict[str, Any]] = [
         {"type": "session.created", "session": {"id": "sess_demo"}},
@@ -104,7 +104,7 @@ async def main() -> None:
                         "item": {
                             "type": "function_call_output",
                             "call_id": evt["call_id"],
-                            "output": ("[warden] denied: " + " ; ".join(verdict.reasons)),
+                            "output": ("[clavenar] denied: " + " ; ".join(verdict.reasons)),
                         },
                     }
                 )
@@ -120,7 +120,7 @@ async def main() -> None:
                     "item": {
                         "type": "function_call_output",
                         "call_id": evt["call_id"],
-                        "output": "[warden] awaiting human approval",
+                        "output": "[clavenar] awaiting human approval",
                     },
                 }
             )

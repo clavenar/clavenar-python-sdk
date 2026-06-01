@@ -7,7 +7,7 @@ The contract mirrors the TS SDK's `stream.ts` one-for-one:
      OpenAI `tool_calls[i].function.arguments` deltas are buffered
      per tool until the call closes.
   2. The closing event (`content_block_stop` on Anthropic,
-     `finish_reason == "tool_calls"` on OpenAI) is held while warden
+     `finish_reason == "tool_calls"` on OpenAI) is held while clavenar
      inspects. On deny in enforce mode we raise BEFORE yielding the
      closing event — partner code never sees a denied tool call as
      actionable.
@@ -24,14 +24,14 @@ from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from warden_ai.errors import (
-    WardenConfigError,
-    WardenDenied,
-    WardenPending,
-    WardenTransportError,
+from clavenar_ai.errors import (
+    ClavenarConfigError,
+    ClavenarDenied,
+    ClavenarPending,
+    ClavenarTransportError,
 )
-from warden_ai.options import WardenOptions, WardenVerdictContext
-from warden_ai.transport import (
+from clavenar_ai.options import ClavenarOptions, ClavenarVerdictContext
+from clavenar_ai.transport import (
     NormalizedToolCall,
     inspect_tool_use,
     inspect_tool_use_sync,
@@ -54,7 +54,7 @@ class _ChoiceBufs:
 
 async def wrap_anthropic_stream(
     upstream: AsyncIterable[Any],
-    opts: WardenOptions,
+    opts: ClavenarOptions,
 ) -> AsyncIterator[Any]:
     """Wrap an Anthropic async message stream. Yields each event in
     order. On `content_block_stop` for a tool_use block, inspects
@@ -100,10 +100,10 @@ async def wrap_anthropic_stream(
 
 def wrap_anthropic_stream_sync(
     upstream: Iterable[Any],
-    opts: WardenOptions,
+    opts: ClavenarOptions,
 ) -> Iterator[Any]:
     """Sync mirror of `wrap_anthropic_stream`. Same semantics; raises
-    `WardenDenied` / `WardenPending` mid-iteration on enforce deny.
+    `ClavenarDenied` / `ClavenarPending` mid-iteration on enforce deny.
     """
     bufs: dict[int, _ToolBuf] = {}
     enforce = opts.mode == "enforce"
@@ -145,7 +145,7 @@ def wrap_anthropic_stream_sync(
 
 async def wrap_openai_chat_stream(
     upstream: AsyncIterable[Any],
-    opts: WardenOptions,
+    opts: ClavenarOptions,
 ) -> AsyncIterator[Any]:
     """Wrap an OpenAI async chat-completion chunk stream. Tool deltas
     are accumulated per `(choice_index, tool_index)`. On a chunk with
@@ -178,7 +178,7 @@ async def wrap_openai_chat_stream(
 
 def wrap_openai_chat_stream_sync(
     upstream: Iterable[Any],
-    opts: WardenOptions,
+    opts: ClavenarOptions,
 ) -> Iterator[Any]:
     """Sync mirror of `wrap_openai_chat_stream`."""
     bufs: dict[int, _ChoiceBufs] = {}
@@ -230,7 +230,7 @@ def _drain_openai_choice(bufs: dict[int, _ChoiceBufs], choice_idx: int) -> list[
     out: list[NormalizedToolCall] = []
     for tool_idx, buf in cb.by_index.items():
         if buf.id is None or buf.name is None:
-            raise WardenConfigError(
+            raise ClavenarConfigError(
                 "OpenAI stream chunk finished with finish_reason='tool_calls' "
                 f"but tool_call buffer (choice {choice_idx}, tool {tool_idx}) "
                 "is missing id or name"
@@ -241,14 +241,14 @@ def _drain_openai_choice(bufs: dict[int, _ChoiceBufs], choice_idx: int) -> list[
 
 def _buf_to_call(buf: _ToolBuf, label: str) -> NormalizedToolCall:
     if buf.id is None or buf.name is None:
-        raise WardenConfigError(f"{label} buffer missing id or name at close")
+        raise ClavenarConfigError(f"{label} buffer missing id or name at close")
     if buf.args_buf == "":
         parsed: Any = {}
     else:
         try:
             parsed = json.loads(buf.args_buf)
         except json.JSONDecodeError as e:
-            raise WardenConfigError(
+            raise ClavenarConfigError(
                 f"{label} {buf.id} ({buf.name}) streamed unparseable arguments: {e}"
             ) from e
     return NormalizedToolCall(id=buf.id, name=buf.name, input=parsed)
@@ -274,11 +274,11 @@ def _evt(obj: Any, key: str, *, default: Any = None) -> Any:
 
 
 async def _inspect_and_maybe_raise(
-    call: NormalizedToolCall, opts: WardenOptions, enforce: bool
+    call: NormalizedToolCall, opts: ClavenarOptions, enforce: bool
 ) -> None:
     try:
         verdict = await inspect_tool_use(call, opts)
-    except WardenTransportError as e:
+    except ClavenarTransportError as e:
         if not enforce:
             await _fire_policy_error(e, call, opts)
             return
@@ -287,11 +287,11 @@ async def _inspect_and_maybe_raise(
 
 
 def _inspect_and_maybe_raise_sync(
-    call: NormalizedToolCall, opts: WardenOptions, enforce: bool
+    call: NormalizedToolCall, opts: ClavenarOptions, enforce: bool
 ) -> None:
     try:
         verdict = inspect_tool_use_sync(call, opts)
-    except WardenTransportError as e:
+    except ClavenarTransportError as e:
         if not enforce:
             _fire_policy_error_sync(e, call, opts)
             return
@@ -300,7 +300,7 @@ def _inspect_and_maybe_raise_sync(
 
 
 async def _inspect_choice_batch(
-    calls: list[NormalizedToolCall], opts: WardenOptions, enforce: bool
+    calls: list[NormalizedToolCall], opts: ClavenarOptions, enforce: bool
 ) -> None:
     if not calls:
         return
@@ -308,21 +308,21 @@ async def _inspect_choice_batch(
     async def one(c: NormalizedToolCall) -> tuple[NormalizedToolCall, Any]:
         try:
             return c, await inspect_tool_use(c, opts)
-        except WardenTransportError as e:
+        except ClavenarTransportError as e:
             if not enforce:
                 return c, e
             raise
 
     results = await asyncio.gather(*(one(c) for c in calls))
     for call, result in results:
-        if isinstance(result, WardenTransportError):
+        if isinstance(result, ClavenarTransportError):
             await _fire_policy_error(result, call, opts)
             continue
         await _process_verdict(result, call, opts, enforce)
 
 
 def _inspect_choice_batch_sync(
-    calls: list[NormalizedToolCall], opts: WardenOptions, enforce: bool
+    calls: list[NormalizedToolCall], opts: ClavenarOptions, enforce: bool
 ) -> None:
     if not calls:
         return
@@ -330,47 +330,47 @@ def _inspect_choice_batch_sync(
     for c in calls:
         try:
             results.append((c, inspect_tool_use_sync(c, opts)))
-        except WardenTransportError as e:
+        except ClavenarTransportError as e:
             if not enforce:
                 results.append((c, e))
                 continue
             raise
     for call, result in results:
-        if isinstance(result, WardenTransportError):
+        if isinstance(result, ClavenarTransportError):
             _fire_policy_error_sync(result, call, opts)
             continue
         _process_verdict_sync(result, call, opts, enforce)
 
 
 async def _fire_policy_error(
-    error: WardenTransportError, call: NormalizedToolCall, opts: WardenOptions
+    error: ClavenarTransportError, call: NormalizedToolCall, opts: ClavenarOptions
 ) -> None:
     if opts.on_policy_error is None:
         return
-    ctx = WardenVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
+    ctx = ClavenarVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
     out = opts.on_policy_error(error, ctx)
     if asyncio.iscoroutine(out):
         await out
 
 
 def _fire_policy_error_sync(
-    error: WardenTransportError, call: NormalizedToolCall, opts: WardenOptions
+    error: ClavenarTransportError, call: NormalizedToolCall, opts: ClavenarOptions
 ) -> None:
     if opts.on_policy_error is None:
         return
-    ctx = WardenVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
+    ctx = ClavenarVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
     out = opts.on_policy_error(error, ctx)
     if asyncio.iscoroutine(out):
-        raise WardenConfigError(
+        raise ClavenarConfigError(
             "on_policy_error returned a coroutine but the stream is sync; "
             "use a sync callback for sync clients"
         )
 
 
 async def _process_verdict(
-    verdict: Any, call: NormalizedToolCall, opts: WardenOptions, enforce: bool
+    verdict: Any, call: NormalizedToolCall, opts: ClavenarOptions, enforce: bool
 ) -> None:
-    ctx = WardenVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
+    ctx = ClavenarVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
     if opts.on_verdict is not None:
         out = opts.on_verdict(verdict, ctx)
         if asyncio.iscoroutine(out):
@@ -378,7 +378,7 @@ async def _process_verdict(
     if not enforce:
         return
     if verdict.kind == "deny":
-        raise WardenDenied(
+        raise ClavenarDenied(
             tool_name=call.name,
             reasons=verdict.reasons,
             review_reasons=verdict.review_reasons,
@@ -391,7 +391,7 @@ async def _process_verdict(
         async def _poll(corr_id: str = corr) -> Any:
             return await poll_pending_once(corr_id, opts)
 
-        raise WardenPending(
+        raise ClavenarPending(
             tool_name=call.name,
             correlation_id=verdict.correlation_id,
             review_reasons=verdict.review_reasons,
@@ -400,20 +400,20 @@ async def _process_verdict(
 
 
 def _process_verdict_sync(
-    verdict: Any, call: NormalizedToolCall, opts: WardenOptions, enforce: bool
+    verdict: Any, call: NormalizedToolCall, opts: ClavenarOptions, enforce: bool
 ) -> None:
-    ctx = WardenVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
+    ctx = ClavenarVerdictContext(tool_name=call.name, tool_use_id=call.id, tool_input=call.input)
     if opts.on_verdict is not None:
         out = opts.on_verdict(verdict, ctx)
         if asyncio.iscoroutine(out):
-            raise WardenConfigError(
+            raise ClavenarConfigError(
                 "on_verdict returned a coroutine but the stream is sync; "
                 "use a sync callback for sync clients"
             )
     if not enforce:
         return
     if verdict.kind == "deny":
-        raise WardenDenied(
+        raise ClavenarDenied(
             tool_name=call.name,
             reasons=verdict.reasons,
             review_reasons=verdict.review_reasons,
@@ -427,7 +427,7 @@ def _process_verdict_sync(
         async def _poll_async(corr_id: str = corr) -> Any:
             return poll_pending_once_sync(corr_id, opts)
 
-        raise WardenPending(
+        raise ClavenarPending(
             tool_name=call.name,
             correlation_id=verdict.correlation_id,
             review_reasons=verdict.review_reasons,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from warden_ai.transport import NormalizedToolCall
+from clavenar_ai.transport import NormalizedToolCall
 
 
 def extract_tool_uses(result: Any) -> list[NormalizedToolCall]:

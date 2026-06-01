@@ -1,9 +1,9 @@
-"""Streaming inspection: warden holds the closing event until a
+"""Streaming inspection: clavenar holds the closing event until a
 verdict lands. A denied tool raises mid-iteration before the partner
 can act on it.
 
 Usage:
-    pip install warden-ai anthropic
+    pip install clavenar-ai anthropic
     ANTHROPIC_API_KEY=... python examples/streaming_anthropic.py
 """
 
@@ -14,14 +14,14 @@ import os
 
 from anthropic import AsyncAnthropic
 
-from warden_ai import WardenDenied, WardenOptions, warden_wrap
+from clavenar_ai import ClavenarDenied, ClavenarOptions, clavenar_wrap
 
 
 async def main() -> None:
-    endpoint = os.environ.get("WARDEN_LITE_URL", "http://localhost:8080")
-    client = warden_wrap(
+    endpoint = os.environ.get("CLAVENAR_LITE_URL", "http://localhost:8080")
+    client = clavenar_wrap(
         AsyncAnthropic(),
-        WardenOptions(endpoint=endpoint, mode="enforce"),
+        ClavenarOptions(endpoint=endpoint, mode="enforce"),
     )
 
     try:
@@ -44,8 +44,8 @@ async def main() -> None:
         )
         async for event in stream:
             print(f"event: {event.type}")
-    except WardenDenied as e:
-        print(f"warden denied {e.tool_name} mid-stream")
+    except ClavenarDenied as e:
+        print(f"clavenar denied {e.tool_name} mid-stream")
         print(f"  reasons:         {e.reasons}")
         print(f"  correlation_id:  {e.correlation_id}")
 

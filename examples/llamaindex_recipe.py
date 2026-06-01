@@ -1,12 +1,12 @@
-"""LlamaIndex + warden — gate every FunctionTool call.
+"""LlamaIndex + clavenar — gate every FunctionTool call.
 
 LlamaIndex agents register tools as ``FunctionTool`` objects with a
 plain Python callable. Wrap the callable with the helper below
 before handing it to LlamaIndex; the wrapped callable consults
-warden, then runs your handler on green / approved-pending.
+clavenar, then runs your handler on green / approved-pending.
 
 Usage:
-    pip install warden-ai llama-index
+    pip install clavenar-ai llama-index
     python examples/llamaindex_recipe.py
 """
 
@@ -20,24 +20,24 @@ import secrets
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from warden_ai import (
+from clavenar_ai import (
     NormalizedToolCall,
-    WardenDenied,
-    WardenOptions,
-    WardenPending,
+    ClavenarDenied,
+    ClavenarOptions,
+    ClavenarPending,
     inspect_tool_use,
 )
 
 ToolCallable = Callable[..., Any | Awaitable[Any]]
 
 
-def warden_function_tool(
-    options: WardenOptions,
+def clavenar_function_tool(
+    options: ClavenarOptions,
     name: str,
     fn: ToolCallable,
 ) -> ToolCallable:
     """Return an async callable LlamaIndex's FunctionTool can wrap.
-    The returned callable consults warden before invoking ``fn``;
+    The returned callable consults clavenar before invoking ``fn``;
     on deny it returns an explanatory string LlamaIndex surfaces
     to the model.
     """
@@ -52,13 +52,13 @@ def warden_function_tool(
                 ),
                 options,
             )
-        except WardenPending as pending:
+        except ClavenarPending as pending:
             try:
                 await pending.resolve()
-            except WardenDenied as decided:
-                return f"[warden] {name} denied by operator: {' ; '.join(decided.reasons)}"
-        except WardenDenied as denied:
-            return f"[warden] {name} denied: {' ; '.join(denied.reasons)}"
+            except ClavenarDenied as decided:
+                return f"[clavenar] {name} denied by operator: {' ; '.join(decided.reasons)}"
+        except ClavenarDenied as denied:
+            return f"[clavenar] {name} denied: {' ; '.join(denied.reasons)}"
         result = fn(**kwargs)
         if inspect.iscoroutine(result):
             result = await result
@@ -83,9 +83,9 @@ async def wire_transfer(to: str, amount: float) -> dict[str, Any]:
 
 
 async def main() -> None:
-    options = WardenOptions(
-        endpoint=os.environ.get("WARDEN_LITE_URL", "http://localhost:8088"),
-        token=os.environ.get("WARDEN_LITE_TOKEN", "demo-token"),
+    options = ClavenarOptions(
+        endpoint=os.environ.get("CLAVENAR_LITE_URL", "http://localhost:8088"),
+        token=os.environ.get("CLAVENAR_LITE_TOKEN", "demo-token"),
         mode="enforce",
     )
 
@@ -93,16 +93,16 @@ async def main() -> None:
     #
     #   from llama_index.core.tools import FunctionTool
     #   fetch_tool = FunctionTool.from_defaults(
-    #       fn=warden_function_tool(options, "fetch_user", fetch_user)
+    #       fn=clavenar_function_tool(options, "fetch_user", fetch_user)
     #   )
     #   wire_tool = FunctionTool.from_defaults(
-    #       fn=warden_function_tool(options, "wire_transfer", wire_transfer)
+    #       fn=clavenar_function_tool(options, "wire_transfer", wire_transfer)
     #   )
     #   agent = ReActAgent.from_tools([fetch_tool, wire_tool], llm=llm)
     #   await agent.aquery("Send $250 to acct-9")
 
-    gated_fetch = warden_function_tool(options, "fetch_user", fetch_user)
-    gated_wire = warden_function_tool(options, "wire_transfer", wire_transfer)
+    gated_fetch = clavenar_function_tool(options, "fetch_user", fetch_user)
+    gated_wire = clavenar_function_tool(options, "wire_transfer", wire_transfer)
 
     print("→ fetch_user")
     print(" ", await gated_fetch(userId="alice"))

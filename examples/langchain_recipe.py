@@ -1,8 +1,8 @@
-"""LangChain (Python) + warden — gate every tool the agent runs.
+"""LangChain (Python) + clavenar — gate every tool the agent runs.
 
-The load-bearing pattern is `warden_tool(name, description, func)`:
+The load-bearing pattern is `clavenar_tool(name, description, func)`:
 returns a LangChain-shaped StructuredTool whose `func` consults
-warden before delegating to your real handler. Drop this helper
+clavenar before delegating to your real handler. Drop this helper
 into your existing LangChain agent and every tool call routes
 through the proxy without further changes.
 
@@ -12,7 +12,7 @@ denominator dict shape so the helper transplants into any of them
 with a trivial constructor swap.
 
 Usage:
-    pip install warden-ai langchain
+    pip install clavenar-ai langchain
     python examples/langchain_recipe.py
 """
 
@@ -26,11 +26,11 @@ import secrets
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from warden_ai import (
+from clavenar_ai import (
     NormalizedToolCall,
-    WardenDenied,
-    WardenOptions,
-    WardenPending,
+    ClavenarDenied,
+    ClavenarOptions,
+    ClavenarPending,
     inspect_tool_use,
 )
 
@@ -39,13 +39,13 @@ def _new_tool_use_id() -> str:
     return secrets.token_hex(4)
 
 
-def warden_tool(
-    options: WardenOptions,
+def clavenar_tool(
+    options: ClavenarOptions,
     name: str,
     description: str,
     func: Callable[[dict[str, Any]], Awaitable[Any]],
 ) -> dict[str, Any]:
-    """Wrap a LangChain-shaped tool so its `func` consults warden
+    """Wrap a LangChain-shaped tool so its `func` consults clavenar
     before running. Returns the same shape LangChain consumes:
     ``{"name", "description", "func"}``.
     """
@@ -64,13 +64,13 @@ def warden_tool(
                 ),
                 options,
             )
-        except WardenPending as pending:
+        except ClavenarPending as pending:
             try:
                 await pending.resolve()
-            except WardenDenied as decided:
-                return f"[warden] denied by operator: {' ; '.join(decided.reasons)}"
-        except WardenDenied as denied:
-            return f"[warden] denied: {' ; '.join(denied.reasons)}"
+            except ClavenarDenied as decided:
+                return f"[clavenar] denied by operator: {' ; '.join(decided.reasons)}"
+        except ClavenarDenied as denied:
+            return f"[clavenar] denied: {' ; '.join(denied.reasons)}"
         result = func(args) if not inspect.iscoroutinefunction(func) else await func(args)
         return result if isinstance(result, str) else json.dumps(result)
 
@@ -89,15 +89,15 @@ async def _wire_transfer(args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def main() -> None:
-    options = WardenOptions(
-        endpoint=os.environ.get("WARDEN_LITE_URL", "http://localhost:8088"),
-        token=os.environ.get("WARDEN_LITE_TOKEN", "demo-token"),
+    options = ClavenarOptions(
+        endpoint=os.environ.get("CLAVENAR_LITE_URL", "http://localhost:8088"),
+        token=os.environ.get("CLAVENAR_LITE_TOKEN", "demo-token"),
         mode="enforce",
     )
 
     tools = [
-        warden_tool(options, "fetch_user", "Fetch a user record.", _fetch_user),
-        warden_tool(options, "wire_transfer", "Send a wire transfer.", _wire_transfer),
+        clavenar_tool(options, "fetch_user", "Fetch a user record.", _fetch_user),
+        clavenar_tool(options, "wire_transfer", "Send a wire transfer.", _wire_transfer),
     ]
 
     # Stand-in for `agent_executor.ainvoke(...)` — runs each tool

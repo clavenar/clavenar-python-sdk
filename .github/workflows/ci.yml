@@ -38,7 +38,7 @@ jobs:
       # Keep it scoped to one job so feedback stays focused.
       - name: mypy
         if: matrix.python-version == '3.10'
-        run: mypy src/warden_ai
+        run: mypy src/clavenar_ai
 
       - name: pytest
         run: pytest

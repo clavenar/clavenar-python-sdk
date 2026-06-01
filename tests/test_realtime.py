@@ -1,18 +1,18 @@
-"""OpenAI Realtime helper tests against a respx-mocked warden-lite."""
+"""OpenAI Realtime helper tests against a respx-mocked clavenar-lite."""
 
 from __future__ import annotations
 
 import httpx
 import respx
 
-from warden_ai.options import WardenOptions
-from warden_ai.realtime import (
+from clavenar_ai.options import ClavenarOptions
+from clavenar_ai.realtime import (
     inspect_realtime_function_call,
     is_realtime_function_call_done,
     normalize_realtime_function_call,
 )
 
-FAKE_ENDPOINT = "http://warden-lite.test"
+FAKE_ENDPOINT = "http://clavenar-lite.test"
 
 
 def _done_event() -> dict[str, object]:
@@ -76,7 +76,7 @@ async def test_inspect_returns_allow_on_200() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200, json={}))
     verdict = await inspect_realtime_function_call(
         _done_event(),
-        WardenOptions(endpoint=FAKE_ENDPOINT),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
     )
     assert verdict.kind == "allow"
 
@@ -96,7 +96,7 @@ async def test_inspect_forwards_deny_on_403() -> None:
     )
     verdict = await inspect_realtime_function_call(
         _done_event(),
-        WardenOptions(endpoint=FAKE_ENDPOINT),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
     )
     assert verdict.kind == "deny"
     assert "approval" in " ".join(verdict.reasons)  # type: ignore[union-attr]
@@ -113,7 +113,7 @@ async def test_inspect_uses_call_id_as_envelope_id() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(side_effect=_handler)
     await inspect_realtime_function_call(
         _done_event(),
-        WardenOptions(endpoint=FAKE_ENDPOINT),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
     )
     body = captured["body"]
     assert isinstance(body, str)

@@ -2,7 +2,7 @@
 agent emits over the Realtime websocket.
 
 The Realtime API is websocket-based; there is no `client.method()` for
-`warden_wrap` to intercept. Drain the WS event stream yourself and run
+`clavenar_wrap` to intercept. Drain the WS event stream yourself and run
 each ``response.function_call_arguments.done`` event through
 :func:`inspect_realtime_function_call` before dispatching your
 handler. Deltas can be ignored — by the time the ``done`` event
@@ -17,8 +17,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from warden_ai.options import WardenOptions
-from warden_ai.transport import NormalizedToolCall, WardenVerdict, inspect_tool_use
+from clavenar_ai.options import ClavenarOptions
+from clavenar_ai.transport import NormalizedToolCall, ClavenarVerdict, inspect_tool_use
 
 
 def is_realtime_function_call_done(evt: dict[str, Any]) -> bool:
@@ -43,7 +43,7 @@ def normalize_realtime_function_call(evt: dict[str, Any]) -> NormalizedToolCall:
 
     The ``arguments`` field is a JSON-encoded string in the Realtime
     contract; we parse it on the way through. On parse failure the
-    call's ``input`` lands as the raw string so warden can still
+    call's ``input`` lands as the raw string so clavenar can still
     inspect the *attempt* — a malformed-args policy is a legitimate
     use case and the helper shouldn't swallow it.
     """
@@ -56,8 +56,8 @@ def normalize_realtime_function_call(evt: dict[str, Any]) -> NormalizedToolCall:
 
 async def inspect_realtime_function_call(
     evt: dict[str, Any],
-    opts: WardenOptions,
-) -> WardenVerdict:
+    opts: ClavenarOptions,
+) -> ClavenarVerdict:
     """One-shot inspection helper.
 
     Equivalent to

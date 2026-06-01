@@ -1,6 +1,6 @@
 # Security Policy
 
-`warden-ai` (Python) is the client half of a security product. We take
+`clavenar-ai` (Python) is the client half of a security product. We take
 vulnerability reports seriously and aim to acknowledge every report
 within 72 hours.
 
@@ -12,7 +12,7 @@ Email **vanteguardlabs@gmail.com** with:
 - Steps to reproduce. A minimal proof-of-concept is appreciated but not
   required if the issue is structural.
 - Affected file path, commit hash, and (if applicable) the
-  `WardenOptions` configuration that reproduces the issue.
+  `ClavenarOptions` configuration that reproduces the issue.
 - Whether you would like public credit in the disclosure announcement.
 
 PGP/GPG: not yet available. If you need an encrypted channel, mention it
@@ -22,17 +22,17 @@ in your initial email and we will arrange one.
 
 In scope:
 
-- The `warden_ai` package: client-side request shaping, the wrap
-  surface (`warden_wrap`, `warden_messages`), inspection request
+- The `clavenar_ai` package: client-side request shaping, the wrap
+  surface (`clavenar_wrap`, `clavenar_messages`), inspection request
   signing, retry / pending poll loops, and the
-  `WardenDenied` / `WardenPending` / `WardenTransportError` raise
+  `ClavenarDenied` / `ClavenarPending` / `ClavenarTransportError` raise
   contract.
 - Transport security between the SDK and the inspect endpoint
   (`endpoint` URL handling, TLS verification posture, header
   forwarding via `extra_headers`).
 - The streaming intercept (Anthropic `content_block_stop` /
   OpenAI `finish_reason="tool_calls"`) — verdict-before-tool ordering.
-- Sync vs async client detection in `warden_wrap`.
+- Sync vs async client detection in `clavenar_wrap`.
 
 Out of scope:
 
@@ -45,7 +45,7 @@ Out of scope:
   pinned versions in `CHANGELOG.md`.
 - Findings against the demo flow on `console-demo.vanteguardlabs.com`
   when caused by demo-specific configuration (the demo accepts
-  `X-Warden-Demo-Prefix` headers visitors mint themselves).
+  `X-Clavenar-Demo-Prefix` headers visitors mint themselves).
 
 ## Safe harbor
 
@@ -68,5 +68,5 @@ We will not pursue civil or criminal action against researchers who:
 
 We may extend the disclosure window for issues that require a
 coordinated multi-language fix (the TypeScript SDK at
-`warden-ai-sdk` shares the same wire contract); we will tell you in
+`clavenar-ai-sdk` shares the same wire contract); we will tell you in
 advance and explain why.

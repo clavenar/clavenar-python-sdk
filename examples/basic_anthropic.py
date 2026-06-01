@@ -1,12 +1,12 @@
-"""Minimal example: wrap AsyncAnthropic with warden-ai and catch a deny.
+"""Minimal example: wrap AsyncAnthropic with clavenar-ai and catch a deny.
 
-Run with a real Anthropic key + a real warden-lite at the endpoint.
+Run with a real Anthropic key + a real clavenar-lite at the endpoint.
 The /demo curated catalog ships a `sql_execute` scenario that
-warden denies in policy — this script catches the deny and prints
+clavenar denies in policy — this script catches the deny and prints
 the reasons + correlation id.
 
 Usage:
-    pip install warden-ai anthropic
+    pip install clavenar-ai anthropic
     ANTHROPIC_API_KEY=... python examples/basic_anthropic.py
 """
 
@@ -17,14 +17,14 @@ import os
 
 from anthropic import AsyncAnthropic
 
-from warden_ai import WardenDenied, WardenOptions, warden_wrap
+from clavenar_ai import ClavenarDenied, ClavenarOptions, clavenar_wrap
 
 
 async def main() -> None:
-    endpoint = os.environ.get("WARDEN_LITE_URL", "http://localhost:8080")
-    client = warden_wrap(
+    endpoint = os.environ.get("CLAVENAR_LITE_URL", "http://localhost:8080")
+    client = clavenar_wrap(
         AsyncAnthropic(),
-        WardenOptions(endpoint=endpoint, mode="enforce"),
+        ClavenarOptions(endpoint=endpoint, mode="enforce"),
     )
 
     try:
@@ -50,8 +50,8 @@ async def main() -> None:
             ],
         )
         print(f"agent finished without deny: {result.stop_reason}")
-    except WardenDenied as e:
-        print(f"warden denied {e.tool_name}")
+    except ClavenarDenied as e:
+        print(f"clavenar denied {e.tool_name}")
         print(f"  reasons:          {e.reasons}")
         print(f"  intent_category:  {e.intent_category}")
         print(f"  correlation_id:   {e.correlation_id}")

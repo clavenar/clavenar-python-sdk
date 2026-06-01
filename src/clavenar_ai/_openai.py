@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from warden_ai.transport import NormalizedToolCall
+from clavenar_ai.transport import NormalizedToolCall
 
 
 def extract_tool_calls(result: Any) -> list[NormalizedToolCall]:
@@ -47,7 +47,7 @@ def _normalize_chat_tool_call(call: Any) -> NormalizedToolCall | None:
     try:
         arguments = json.loads(arguments_raw) if arguments_raw else {}
     except json.JSONDecodeError:
-        # Pass through as a string — warden-lite's MCP envelope
+        # Pass through as a string — clavenar-lite's MCP envelope
         # accepts arbitrary JSON values; preserving the literal lets
         # the inspector see what the model actually emitted, even if
         # malformed.

@@ -1,4 +1,4 @@
-"""Shared fixtures: a respx mock router pointing at a fake warden-lite
+"""Shared fixtures: a respx mock router pointing at a fake clavenar-lite
 URL, and lightweight fake Anthropic / OpenAI clients that don't depend
 on the real SDKs.
 """
@@ -10,25 +10,25 @@ from typing import Any
 
 import pytest
 
-from warden_ai.options import WardenOptions
+from clavenar_ai.options import ClavenarOptions
 
-FAKE_ENDPOINT = "http://warden-lite.test"
-
-
-@pytest.fixture
-def opts() -> WardenOptions:
-    return WardenOptions(endpoint=FAKE_ENDPOINT, mode="enforce", timeout_s=2.0)
+FAKE_ENDPOINT = "http://clavenar-lite.test"
 
 
 @pytest.fixture
-def opts_observe() -> WardenOptions:
-    return WardenOptions(endpoint=FAKE_ENDPOINT, mode="observe", timeout_s=2.0)
+def opts() -> ClavenarOptions:
+    return ClavenarOptions(endpoint=FAKE_ENDPOINT, mode="enforce", timeout_s=2.0)
+
+
+@pytest.fixture
+def opts_observe() -> ClavenarOptions:
+    return ClavenarOptions(endpoint=FAKE_ENDPOINT, mode="observe", timeout_s=2.0)
 
 
 # ---------------------------------------------------------------------------
 # Fake clients. The real `anthropic` and `openai` Python packages aren't
 # runtime deps of this SDK; the tests stand up minimal duck-typed clients
-# to exercise `warden_wrap`'s detection + interception paths.
+# to exercise `clavenar_wrap`'s detection + interception paths.
 # ---------------------------------------------------------------------------
 
 

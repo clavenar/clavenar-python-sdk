@@ -1,4 +1,4 @@
-"""HTTP transport behaviour against a respx-mocked warden-lite."""
+"""HTTP transport behaviour against a respx-mocked clavenar-lite."""
 
 from __future__ import annotations
 
@@ -6,23 +6,23 @@ import httpx
 import pytest
 import respx
 
-from warden_ai.errors import WardenTransportError
-from warden_ai.options import WardenOptions
-from warden_ai.transport import NormalizedToolCall, inspect_tool_use, poll_pending_once
+from clavenar_ai.errors import ClavenarTransportError
+from clavenar_ai.options import ClavenarOptions
+from clavenar_ai.transport import NormalizedToolCall, inspect_tool_use, poll_pending_once
 
-FAKE_ENDPOINT = "http://warden-lite.test"
+FAKE_ENDPOINT = "http://clavenar-lite.test"
 
 
 @respx.mock
 async def test_allow_returns_allow_with_correlation_id() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
         return_value=httpx.Response(
-            200, json={"ok": True}, headers={"x-warden-correlation-id": "abc-123"}
+            200, json={"ok": True}, headers={"x-clavenar-correlation-id": "abc-123"}
         )
     )
     verdict = await inspect_tool_use(
         NormalizedToolCall(id="toolu_1", name="list", input={}),
-        WardenOptions(endpoint=FAKE_ENDPOINT),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
     )
     assert verdict.kind == "allow"
     assert verdict.correlation_id == "abc-123"
@@ -39,12 +39,12 @@ async def test_deny_403_parses_security_violation_body() -> None:
                 "review_reasons": [],
                 "intent_category": "code_execution",
             },
-            headers={"x-warden-correlation-id": "deny-1"},
+            headers={"x-clavenar-correlation-id": "deny-1"},
         )
     )
     verdict = await inspect_tool_use(
         NormalizedToolCall(id="toolu_1", name="sql_execute", input={}),
-        WardenOptions(endpoint=FAKE_ENDPOINT),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
     )
     assert verdict.kind == "deny"
     assert verdict.reasons == ["sql_execute is denied"]
@@ -66,7 +66,7 @@ async def test_pending_202_parses_review_reasons() -> None:
     )
     verdict = await inspect_tool_use(
         NormalizedToolCall(id="toolu_1", name="git_push", input={}),
-        WardenOptions(endpoint=FAKE_ENDPOINT),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
     )
     assert verdict.kind == "pending"
     assert verdict.correlation_id == "corr-7"
@@ -81,10 +81,10 @@ async def test_pending_missing_correlation_id_raises() -> None:
             json={"status": "pending", "correlation_id": "", "review_reasons": []},
         )
     )
-    with pytest.raises(WardenTransportError, match="missing correlation id"):
+    with pytest.raises(ClavenarTransportError, match="missing correlation id"):
         await inspect_tool_use(
             NormalizedToolCall(id="toolu_1", name="op", input={}),
-            WardenOptions(endpoint=FAKE_ENDPOINT),
+            ClavenarOptions(endpoint=FAKE_ENDPOINT),
         )
 
 
@@ -93,10 +93,10 @@ async def test_500_raises_transport_error_with_status() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
         return_value=httpx.Response(503, text="upstream unavailable")
     )
-    with pytest.raises(WardenTransportError) as exc:
+    with pytest.raises(ClavenarTransportError) as exc:
         await inspect_tool_use(
             NormalizedToolCall(id="toolu_1", name="op", input={}),
-            WardenOptions(endpoint=FAKE_ENDPOINT),
+            ClavenarOptions(endpoint=FAKE_ENDPOINT),
         )
     assert exc.value.status == 503
 
@@ -106,7 +106,7 @@ async def test_authorization_header_includes_token() -> None:
     route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200))
     await inspect_tool_use(
         NormalizedToolCall(id="toolu_1", name="op", input={}),
-        WardenOptions(endpoint=FAKE_ENDPOINT, token="secret-123"),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT, token="secret-123"),
     )
     assert route.calls.last.request.headers["authorization"] == "Bearer secret-123"
 
@@ -116,12 +116,12 @@ async def test_extra_headers_forwarded() -> None:
     route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200))
     await inspect_tool_use(
         NormalizedToolCall(id="toolu_1", name="op", input={}),
-        WardenOptions(
+        ClavenarOptions(
             endpoint=FAKE_ENDPOINT,
-            extra_headers={"x-warden-demo-prefix": "abcd1234"},
+            extra_headers={"x-clavenar-demo-prefix": "abcd1234"},
         ),
     )
-    assert route.calls.last.request.headers["x-warden-demo-prefix"] == "abcd1234"
+    assert route.calls.last.request.headers["x-clavenar-demo-prefix"] == "abcd1234"
 
 
 @respx.mock
@@ -142,7 +142,7 @@ async def test_poll_pending_returns_decision_view() -> None:
             },
         )
     )
-    view = await poll_pending_once("corr-9", WardenOptions(endpoint=FAKE_ENDPOINT))
+    view = await poll_pending_once("corr-9", ClavenarOptions(endpoint=FAKE_ENDPOINT))
     assert view.decision == "allow"
     assert view.agent_id == "agent-a"
 
@@ -152,6 +152,6 @@ async def test_poll_pending_terminal_status_raises() -> None:
     respx.get(f"{FAKE_ENDPOINT}/pending/missing").mock(
         return_value=httpx.Response(404, text="not found")
     )
-    with pytest.raises(WardenTransportError) as exc:
-        await poll_pending_once("missing", WardenOptions(endpoint=FAKE_ENDPOINT))
+    with pytest.raises(ClavenarTransportError) as exc:
+        await poll_pending_once("missing", ClavenarOptions(endpoint=FAKE_ENDPOINT))
     assert exc.value.status == 404

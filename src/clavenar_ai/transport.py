@@ -1,4 +1,4 @@
-"""HTTP transport for warden-lite. Submits one normalized tool call,
+"""HTTP transport for clavenar-lite. Submits one normalized tool call,
 parses the verdict (allow / deny / pending), and surfaces correlation
 ids for ledger lookups.
 
@@ -19,10 +19,10 @@ from typing import Any, Literal
 
 import httpx
 
-from warden_ai.errors import WardenTransportError
-from warden_ai.options import WardenOptions
+from clavenar_ai.errors import ClavenarTransportError
+from clavenar_ai.options import ClavenarOptions
 
-CORRELATION_HEADER = "x-warden-correlation-id"
+CORRELATION_HEADER = "x-clavenar-correlation-id"
 
 
 @dataclass(frozen=True)
@@ -56,12 +56,12 @@ class _Pending:
     kind: Literal["pending"] = "pending"
 
 
-WardenVerdict = _Allow | _Deny | _Pending
+ClavenarVerdict = _Allow | _Deny | _Pending
 
 
 @dataclass(frozen=True)
-class WardenPendingView:
-    """`GET /pending/{id}` response shape — mirrors `PendingView` in warden-lite."""
+class ClavenarPendingView:
+    """`GET /pending/{id}` response shape — mirrors `PendingView` in clavenar-lite."""
 
     correlation_id: str
     agent_id: str
@@ -76,14 +76,14 @@ class WardenPendingView:
 
 async def inspect_tool_use(
     tool_call: NormalizedToolCall,
-    opts: WardenOptions,
+    opts: ClavenarOptions,
     *,
     client: httpx.AsyncClient | None = None,
-) -> WardenVerdict:
-    """Submit one normalized tool call to warden-lite for inspection.
+) -> ClavenarVerdict:
+    """Submit one normalized tool call to clavenar-lite for inspection.
 
     Wire contract: `POST {endpoint}/mcp` with a JSON-RPC 2.0 envelope.
-    Server: `warden-lite/src/proxy.rs::handle_mcp`.
+    Server: `clavenar-lite/src/proxy.rs::handle_mcp`.
 
     Retry semantics: network failures and 5xx retry up to
     `opts.retry.max_attempts` with jittered exponential backoff. 200,
@@ -92,24 +92,24 @@ async def inspect_tool_use(
     """
     retry = opts.retry
     if retry.max_attempts < 1:
-        raise WardenTransportError(f"retry.max_attempts must be >= 1, got {retry.max_attempts}")
-    last_err: WardenTransportError | None = None
+        raise ClavenarTransportError(f"retry.max_attempts must be >= 1, got {retry.max_attempts}")
+    last_err: ClavenarTransportError | None = None
     for attempt in range(retry.max_attempts):
         try:
             return await _inspect_single_attempt(tool_call, opts, client)
-        except WardenTransportError as e:
+        except ClavenarTransportError as e:
             last_err = e
             if not _is_retriable(e) or attempt == retry.max_attempts - 1:
                 raise
             await asyncio.sleep(_backoff_s(retry.base_delay_s, attempt))
-    raise last_err or WardenTransportError("warden inspect: no attempts ran")
+    raise last_err or ClavenarTransportError("clavenar inspect: no attempts ran")
 
 
 async def _inspect_single_attempt(
     tool_call: NormalizedToolCall,
-    opts: WardenOptions,
+    opts: ClavenarOptions,
     client: httpx.AsyncClient | None,
-) -> WardenVerdict:
+) -> ClavenarVerdict:
     body = _inspect_body(tool_call)
     headers = _inspect_headers(opts)
     url = _join_url(opts.endpoint, "/mcp")
@@ -121,9 +121,9 @@ async def _inspect_single_attempt(
         try:
             response = await client.post(url, json=body, headers=headers, timeout=opts.timeout_s)
         except httpx.TimeoutException as e:
-            raise WardenTransportError(f"warden inspect timed out after {opts.timeout_s}s") from e
+            raise ClavenarTransportError(f"clavenar inspect timed out after {opts.timeout_s}s") from e
         except httpx.HTTPError as e:
-            raise WardenTransportError(f"warden inspect failed: {e}") from e
+            raise ClavenarTransportError(f"clavenar inspect failed: {e}") from e
     finally:
         if owned is not None:
             await owned.aclose()
@@ -133,10 +133,10 @@ async def _inspect_single_attempt(
 
 def inspect_tool_use_sync(
     tool_call: NormalizedToolCall,
-    opts: WardenOptions,
+    opts: ClavenarOptions,
     *,
     client: httpx.Client | None = None,
-) -> WardenVerdict:
+) -> ClavenarVerdict:
     """Sync mirror of `inspect_tool_use` for partners wrapping
     `anthropic.Anthropic` / `openai.OpenAI`.
 
@@ -145,24 +145,24 @@ def inspect_tool_use_sync(
     """
     retry = opts.retry
     if retry.max_attempts < 1:
-        raise WardenTransportError(f"retry.max_attempts must be >= 1, got {retry.max_attempts}")
-    last_err: WardenTransportError | None = None
+        raise ClavenarTransportError(f"retry.max_attempts must be >= 1, got {retry.max_attempts}")
+    last_err: ClavenarTransportError | None = None
     for attempt in range(retry.max_attempts):
         try:
             return _inspect_single_attempt_sync(tool_call, opts, client)
-        except WardenTransportError as e:
+        except ClavenarTransportError as e:
             last_err = e
             if not _is_retriable(e) or attempt == retry.max_attempts - 1:
                 raise
             time.sleep(_backoff_s(retry.base_delay_s, attempt))
-    raise last_err or WardenTransportError("warden inspect: no attempts ran")
+    raise last_err or ClavenarTransportError("clavenar inspect: no attempts ran")
 
 
 def _inspect_single_attempt_sync(
     tool_call: NormalizedToolCall,
-    opts: WardenOptions,
+    opts: ClavenarOptions,
     client: httpx.Client | None,
-) -> WardenVerdict:
+) -> ClavenarVerdict:
     body = _inspect_body(tool_call)
     headers = _inspect_headers(opts)
     url = _join_url(opts.endpoint, "/mcp")
@@ -174,9 +174,9 @@ def _inspect_single_attempt_sync(
         try:
             response = client.post(url, json=body, headers=headers, timeout=opts.timeout_s)
         except httpx.TimeoutException as e:
-            raise WardenTransportError(f"warden inspect timed out after {opts.timeout_s}s") from e
+            raise ClavenarTransportError(f"clavenar inspect timed out after {opts.timeout_s}s") from e
         except httpx.HTTPError as e:
-            raise WardenTransportError(f"warden inspect failed: {e}") from e
+            raise ClavenarTransportError(f"clavenar inspect failed: {e}") from e
     finally:
         if owned is not None:
             owned.close()
@@ -193,14 +193,14 @@ def _inspect_body(tool_call: NormalizedToolCall) -> dict[str, Any]:
     }
 
 
-def _inspect_headers(opts: WardenOptions) -> dict[str, str]:
+def _inspect_headers(opts: ClavenarOptions) -> dict[str, str]:
     headers = {"Content-Type": "application/json", **opts.extra_headers}
     if opts.token:
         headers["Authorization"] = f"Bearer {opts.token}"
     return headers
 
 
-def _parse_inspect_response(response: httpx.Response) -> WardenVerdict:
+def _parse_inspect_response(response: httpx.Response) -> ClavenarVerdict:
     correlation_id = response.headers.get(CORRELATION_HEADER)
 
     if response.status_code == 200:
@@ -219,8 +219,8 @@ def _parse_inspect_response(response: httpx.Response) -> WardenVerdict:
         payload = _parse_pending_body(response)
         corr = correlation_id or payload["correlation_id"]
         if not corr:
-            raise WardenTransportError(
-                "warden 202 missing correlation id (header and body both empty)",
+            raise ClavenarTransportError(
+                "clavenar 202 missing correlation id (header and body both empty)",
                 status=202,
             )
         return _Pending(
@@ -229,13 +229,13 @@ def _parse_inspect_response(response: httpx.Response) -> WardenVerdict:
         )
 
     text = _safe_text(response)
-    raise WardenTransportError(
-        f"warden inspect: unexpected status {response.status_code}" + (f": {text}" if text else ""),
+    raise ClavenarTransportError(
+        f"clavenar inspect: unexpected status {response.status_code}" + (f": {text}" if text else ""),
         status=response.status_code,
     )
 
 
-def _is_retriable(e: WardenTransportError) -> bool:
+def _is_retriable(e: ClavenarTransportError) -> bool:
     # No status → fetch itself rejected (DNS, ECONNREFUSED, abort). Retry.
     # 5xx → server error, retry. Everything else (401, 404, 400) is a
     # config error — retrying won't help.
@@ -252,16 +252,16 @@ def _backoff_s(base_s: float, attempt: int) -> float:
 
 async def poll_pending_once(
     correlation_id: str,
-    opts: WardenOptions,
+    opts: ClavenarOptions,
     *,
     client: httpx.AsyncClient | None = None,
-) -> WardenPendingView:
+) -> ClavenarPendingView:
     """Single `GET /pending/{correlation_id}` poll.
 
     Returns the parsed view; the caller's polling loop branches on
     `decision`. 404 and 401 are terminal and surface as
-    `WardenTransportError`. 5xx + network failures also raise — the
-    `WardenPending.resolve` loop catches and retries those between
+    `ClavenarTransportError`. 5xx + network failures also raise — the
+    `ClavenarPending.resolve` loop catches and retries those between
     polls.
     """
     headers: dict[str, str] = dict(opts.extra_headers)
@@ -277,9 +277,9 @@ async def poll_pending_once(
         try:
             response = await client.get(url, headers=headers, timeout=opts.timeout_s)
         except httpx.TimeoutException as e:
-            raise WardenTransportError(f"warden poll timed out after {opts.timeout_s}s") from e
+            raise ClavenarTransportError(f"clavenar poll timed out after {opts.timeout_s}s") from e
         except httpx.HTTPError as e:
-            raise WardenTransportError(f"warden poll failed: {e}") from e
+            raise ClavenarTransportError(f"clavenar poll failed: {e}") from e
     finally:
         if owned is not None:
             await owned.aclose()
@@ -287,19 +287,19 @@ async def poll_pending_once(
     if response.status_code == 200:
         return _parse_pending_view(response)
     text = _safe_text(response)
-    raise WardenTransportError(
-        f"warden poll: unexpected status {response.status_code}" + (f": {text}" if text else ""),
+    raise ClavenarTransportError(
+        f"clavenar poll: unexpected status {response.status_code}" + (f": {text}" if text else ""),
         status=response.status_code,
     )
 
 
 def poll_pending_once_sync(
     correlation_id: str,
-    opts: WardenOptions,
+    opts: ClavenarOptions,
     *,
     client: httpx.Client | None = None,
-) -> WardenPendingView:
-    """Sync mirror of `poll_pending_once`. Used by `WardenPending.resolve_sync`."""
+) -> ClavenarPendingView:
+    """Sync mirror of `poll_pending_once`. Used by `ClavenarPending.resolve_sync`."""
     headers: dict[str, str] = dict(opts.extra_headers)
     if opts.token:
         headers["Authorization"] = f"Bearer {opts.token}"
@@ -313,9 +313,9 @@ def poll_pending_once_sync(
         try:
             response = client.get(url, headers=headers, timeout=opts.timeout_s)
         except httpx.TimeoutException as e:
-            raise WardenTransportError(f"warden poll timed out after {opts.timeout_s}s") from e
+            raise ClavenarTransportError(f"clavenar poll timed out after {opts.timeout_s}s") from e
         except httpx.HTTPError as e:
-            raise WardenTransportError(f"warden poll failed: {e}") from e
+            raise ClavenarTransportError(f"clavenar poll failed: {e}") from e
     finally:
         if owned is not None:
             owned.close()
@@ -323,8 +323,8 @@ def poll_pending_once_sync(
     if response.status_code == 200:
         return _parse_pending_view(response)
     text = _safe_text(response)
-    raise WardenTransportError(
-        f"warden poll: unexpected status {response.status_code}" + (f": {text}" if text else ""),
+    raise ClavenarTransportError(
+        f"clavenar poll: unexpected status {response.status_code}" + (f": {text}" if text else ""),
         status=response.status_code,
     )
 
@@ -333,16 +333,16 @@ def _parse_deny_body(response: httpx.Response) -> dict[str, Any]:
     try:
         body = response.json()
     except ValueError as e:
-        raise WardenTransportError(f"warden 403 with unparseable body: {e}", status=403) from e
+        raise ClavenarTransportError(f"clavenar 403 with unparseable body: {e}", status=403) from e
     if not isinstance(body, dict):
-        raise WardenTransportError(f"warden 403 with unexpected body shape: {body!r}", status=403)
+        raise ClavenarTransportError(f"clavenar 403 with unexpected body shape: {body!r}", status=403)
     if (
         body.get("error") != "security_violation"
         or not isinstance(body.get("reasons"), list)
         or not isinstance(body.get("review_reasons"), list)
         or not isinstance(body.get("intent_category"), str)
     ):
-        raise WardenTransportError(f"warden 403 with unexpected body shape: {body!r}", status=403)
+        raise ClavenarTransportError(f"clavenar 403 with unexpected body shape: {body!r}", status=403)
     return body
 
 
@@ -350,37 +350,37 @@ def _parse_pending_body(response: httpx.Response) -> dict[str, Any]:
     try:
         body = response.json()
     except ValueError as e:
-        raise WardenTransportError(f"warden 202 with unparseable body: {e}", status=202) from e
+        raise ClavenarTransportError(f"clavenar 202 with unparseable body: {e}", status=202) from e
     if not isinstance(body, dict):
-        raise WardenTransportError(f"warden 202 with unexpected body shape: {body!r}", status=202)
+        raise ClavenarTransportError(f"clavenar 202 with unexpected body shape: {body!r}", status=202)
     if (
         body.get("status") != "pending"
         or not isinstance(body.get("correlation_id"), str)
         or not isinstance(body.get("review_reasons"), list)
     ):
-        raise WardenTransportError(f"warden 202 with unexpected body shape: {body!r}", status=202)
+        raise ClavenarTransportError(f"clavenar 202 with unexpected body shape: {body!r}", status=202)
     return body
 
 
-def _parse_pending_view(response: httpx.Response) -> WardenPendingView:
+def _parse_pending_view(response: httpx.Response) -> ClavenarPendingView:
     try:
         body = response.json()
     except ValueError as e:
-        raise WardenTransportError(
-            f"warden poll with unparseable body: {e}", status=response.status_code
+        raise ClavenarTransportError(
+            f"clavenar poll with unparseable body: {e}", status=response.status_code
         ) from e
     if not isinstance(body, dict):
-        raise WardenTransportError(
-            f"warden poll with unexpected body shape: {body!r}",
+        raise ClavenarTransportError(
+            f"clavenar poll with unexpected body shape: {body!r}",
             status=response.status_code,
         )
     decision = body.get("decision")
     if decision not in (None, "allow", "deny"):
-        raise WardenTransportError(
-            f"warden poll: unrecognized decision {decision!r}",
+        raise ClavenarTransportError(
+            f"clavenar poll: unrecognized decision {decision!r}",
             status=response.status_code,
         )
-    return WardenPendingView(
+    return ClavenarPendingView(
         correlation_id=body["correlation_id"],
         agent_id=body["agent_id"],
         tool_type=body["tool_type"],

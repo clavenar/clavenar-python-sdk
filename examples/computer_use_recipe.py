@@ -1,16 +1,16 @@
-"""Anthropic Computer Use + warden — gate every action a computer-using
+"""Anthropic Computer Use + clavenar — gate every action a computer-using
 agent takes (mouse click, keystroke, shell command, file edit) before
 it reaches the workstation.
 
 Computer Use ships three high-blast-radius tool types — ``computer``,
 ``bash``, and ``str_replace_editor``. Each lands as a normal Anthropic
-``tool_use`` block, so wrapping the client with :func:`warden_wrap` is
+``tool_use`` block, so wrapping the client with :func:`clavenar_wrap` is
 the entire integration. What matters is the policy: extend your Rego
 with rules keyed off ``input.params.name`` to deny what shouldn't
 execute.
 
 Usage:
-    pip install warden-ai anthropic
+    pip install clavenar-ai anthropic
     python examples/computer_use_recipe.py
 """
 
@@ -20,11 +20,11 @@ import asyncio
 import os
 from typing import Any
 
-from warden_ai import (
-    WardenDenied,
-    WardenOptions,
-    WardenPending,
-    warden_wrap,
+from clavenar_ai import (
+    ClavenarDenied,
+    ClavenarOptions,
+    ClavenarPending,
+    clavenar_wrap,
 )
 
 
@@ -59,9 +59,9 @@ class _StubAnthropic:
 
 
 async def main() -> None:
-    options = WardenOptions(
-        endpoint=os.environ.get("WARDEN_LITE_URL", "http://localhost:8088"),
-        token=os.environ.get("WARDEN_LITE_TOKEN", "demo-token"),
+    options = ClavenarOptions(
+        endpoint=os.environ.get("CLAVENAR_LITE_URL", "http://localhost:8088"),
+        token=os.environ.get("CLAVENAR_LITE_TOKEN", "demo-token"),
         mode="enforce",
     )
 
@@ -69,7 +69,7 @@ async def main() -> None:
     #   from anthropic import AsyncAnthropic
     #   anthropic = AsyncAnthropic()
     anthropic = _StubAnthropic()
-    wrapped = warden_wrap(anthropic, options)
+    wrapped = clavenar_wrap(anthropic, options)
 
     try:
         msg = await wrapped.messages.create(
@@ -89,14 +89,14 @@ async def main() -> None:
         )
         names = ", ".join(getattr(b, "type", "?") for b in msg.content)
         print(f"green — content blocks: {names}")
-    except WardenDenied as denied:
+    except ClavenarDenied as denied:
         print(f"deny ({denied.tool_name}): {' ; '.join(denied.reasons)}")
-    except WardenPending as pending:
+    except ClavenarPending as pending:
         print(f"pending ({pending.correlation_id}) — awaiting operator")
         try:
             await pending.resolve()
             print("resolved: allow")
-        except WardenDenied as decided:
+        except ClavenarDenied as decided:
             print(f"resolved: deny — {' ; '.join(decided.reasons)}")
 
 
