@@ -45,6 +45,7 @@ class _Deny:
     reasons: list[str]
     review_reasons: list[str]
     intent_category: str
+    layer: str | None = None
     correlation_id: str | None = None
     kind: Literal["deny"] = "deny"
 
@@ -212,6 +213,7 @@ def _parse_inspect_response(response: httpx.Response) -> ClavenarVerdict:
             reasons=payload["reasons"],
             review_reasons=payload["review_reasons"],
             intent_category=payload["intent_category"],
+            layer=payload.get("layer"),
             correlation_id=correlation_id,
         )
 
@@ -334,16 +336,23 @@ def _parse_deny_body(response: httpx.Response) -> dict[str, Any]:
         body = response.json()
     except ValueError as e:
         raise ClavenarTransportError(f"clavenar 403 with unparseable body: {e}", status=403) from e
-    if not isinstance(body, dict):
+    if not isinstance(body, dict) or not isinstance(body.get("error"), str):
         raise ClavenarTransportError(f"clavenar 403 with unexpected body shape: {body!r}", status=403)
-    if (
-        body.get("error") != "security_violation"
-        or not isinstance(body.get("reasons"), list)
-        or not isinstance(body.get("review_reasons"), list)
-        or not isinstance(body.get("intent_category"), str)
-    ):
-        raise ClavenarTransportError(f"clavenar 403 with unexpected body shape: {body!r}", status=403)
-    return body
+    # The shared envelope (lite + full-edition proxy) uses several error
+    # codes / layers and omits empty review_reasons / absent
+    # intent_category. Normalise so the caller sees the always-present
+    # fields; keep `layer` when reported.
+    return {
+        "error": body["error"],
+        "reasons": body["reasons"] if isinstance(body.get("reasons"), list) else [],
+        "review_reasons": body["review_reasons"]
+        if isinstance(body.get("review_reasons"), list)
+        else [],
+        "intent_category": body["intent_category"]
+        if isinstance(body.get("intent_category"), str)
+        else "",
+        "layer": body["layer"] if isinstance(body.get("layer"), str) else None,
+    }
 
 
 def _parse_pending_body(response: httpx.Response) -> dict[str, Any]:

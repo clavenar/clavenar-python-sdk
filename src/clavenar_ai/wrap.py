@@ -207,6 +207,7 @@ def _raise_for_verdict_async(verdict: Any, call: NormalizedToolCall, opts: Clave
             reasons=verdict.reasons,
             review_reasons=verdict.review_reasons,
             intent_category=verdict.intent_category,
+            layer=verdict.layer,
             correlation_id=verdict.correlation_id,
         )
     if verdict.kind == "pending":
@@ -276,6 +277,7 @@ def _raise_for_verdict_sync(verdict: Any, call: NormalizedToolCall, opts: Claven
             reasons=verdict.reasons,
             review_reasons=verdict.review_reasons,
             intent_category=verdict.intent_category,
+            layer=verdict.layer,
             correlation_id=verdict.correlation_id,
         )
     if verdict.kind == "pending":

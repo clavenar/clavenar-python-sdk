@@ -28,7 +28,7 @@ class ClavenarTransportError(Exception):
 
 
 class ClavenarDenied(Exception):
-    """Raised when clavenar returns a 403 security_violation."""
+    """Raised when clavenar returns a 403 deny."""
 
     def __init__(
         self,
@@ -37,6 +37,7 @@ class ClavenarDenied(Exception):
         reasons: list[str],
         review_reasons: list[str],
         intent_category: str,
+        layer: str | None = None,
         correlation_id: str | None = None,
     ) -> None:
         super().__init__(f"clavenar denied tool {tool_name!r}: {' | '.join(reasons)}")
@@ -44,6 +45,10 @@ class ClavenarDenied(Exception):
         self.reasons = reasons
         self.review_reasons = review_reasons
         self.intent_category = intent_category
+        # Stage that produced the deny (brain / policy / hil / egress /
+        # …) when the server reports it; None for older servers or
+        # operator-driven pending denials.
+        self.layer = layer
         self.correlation_id = correlation_id
 
 

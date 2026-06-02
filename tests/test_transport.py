@@ -53,6 +53,35 @@ async def test_deny_403_parses_security_violation_body() -> None:
 
 
 @respx.mock
+async def test_deny_403_parses_full_proxy_envelope() -> None:
+    # The full edition uses varied error codes and omits empty
+    # review_reasons / absent intent_category; the transport must
+    # normalise rather than reject as "unexpected body shape".
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(
+            403,
+            json={
+                "verdict": "denied",
+                "layer": "egress",
+                "error": "egress_blocked",
+                "reasons": ["Egress blocked — sensitive data detected."],
+                "correlation_id": "c-77",
+            },
+            headers={"x-clavenar-correlation-id": "c-77"},
+        )
+    )
+    verdict = await inspect_tool_use(
+        NormalizedToolCall(id="toolu_1", name="fetch", input={}),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
+    )
+    assert verdict.kind == "deny"
+    assert verdict.layer == "egress"
+    assert verdict.review_reasons == []
+    assert verdict.intent_category == ""
+    assert verdict.correlation_id == "c-77"
+
+
+@respx.mock
 async def test_pending_202_parses_review_reasons() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
         return_value=httpx.Response(
