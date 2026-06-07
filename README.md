@@ -173,7 +173,7 @@ This SDK is a faithful client of that contract — if you observe a
 divergence, file the bug against the spec first.
 
 The TypeScript sibling at
-[`clavenar-ai-sdk`](https://github.com/clavenar/clavenar-ai-sdk)
+[`clavenar-typescript-sdk`](https://github.com/clavenar/clavenar-typescript-sdk)
 implements the same wire contract with parity guarantees.
 
 ## License

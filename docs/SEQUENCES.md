@@ -10,7 +10,7 @@ Chat parallels), the async OpenAI Chat streaming choice-end gate
 surface. A request decision-tree flowchart closes the file.
 
 The SDK is a faithful client of the same wire contract as the TS
-sibling at [`clavenar-ai-sdk`](https://github.com/clavenar/clavenar-ai-sdk).
+sibling at [`clavenar-typescript-sdk`](https://github.com/clavenar/clavenar-typescript-sdk).
 The diagrams emphasise the Python-specific shape (in-place
 `.create` monkey-patch instead of a `Proxy` facade,
 `inspect.iscoroutinefunction`-driven sync/async detection,

@@ -68,5 +68,5 @@ We will not pursue civil or criminal action against researchers who:
 
 We may extend the disclosure window for issues that require a
 coordinated multi-language fix (the TypeScript SDK at
-`clavenar-ai-sdk` shares the same wire contract); we will tell you in
+`clavenar-typescript-sdk` shares the same wire contract); we will tell you in
 advance and explain why.

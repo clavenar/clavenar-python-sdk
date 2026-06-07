@@ -1,4 +1,4 @@
-"""Exception hierarchy mirroring `@vanteguardlabs/clavenar-ai-sdk` 0.3.0.
+"""Exception hierarchy mirroring `@clavenar/agent-sdk` 0.3.0.
 
 A partner catching `ClavenarDenied` / `ClavenarPending` in Python should
 see the same fields they'd see in the TS SDK — name, reasons, review
