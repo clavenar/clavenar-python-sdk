@@ -6,9 +6,9 @@ import httpx
 import pytest
 import respx
 
-from clavenar_ai.errors import ClavenarTransportError
-from clavenar_ai.options import ClavenarOptions
-from clavenar_ai.transport import NormalizedToolCall, inspect_tool_use, poll_pending_once
+from clavenar_agent_sdk.errors import ClavenarTransportError
+from clavenar_agent_sdk.options import ClavenarOptions
+from clavenar_agent_sdk.transport import NormalizedToolCall, inspect_tool_use, poll_pending_once
 
 FAKE_ENDPOINT = "http://clavenar-lite.test"
 

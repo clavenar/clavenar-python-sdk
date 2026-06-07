@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from clavenar_ai.errors import ClavenarTransportError
-    from clavenar_ai.transport import ClavenarVerdict
+    from clavenar_agent_sdk.errors import ClavenarTransportError
+    from clavenar_agent_sdk.transport import ClavenarVerdict
 
 
 ClavenarMode = Literal["enforce", "observe"]

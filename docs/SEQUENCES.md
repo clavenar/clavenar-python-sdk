@@ -1,4 +1,4 @@
-# clavenar-ai (Python) sequence diagrams
+# clavenar-agent-sdk (Python) sequence diagrams
 
 Five sequence diagrams covering the wire-level paths the Python SDK
 can take: `clavenar_wrap` boot with the structural client + sync/async

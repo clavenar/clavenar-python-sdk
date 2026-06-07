@@ -24,14 +24,14 @@ from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from clavenar_ai.errors import (
+from clavenar_agent_sdk.errors import (
     ClavenarConfigError,
     ClavenarDenied,
     ClavenarPending,
     ClavenarTransportError,
 )
-from clavenar_ai.options import ClavenarOptions, ClavenarVerdictContext
-from clavenar_ai.transport import (
+from clavenar_agent_sdk.options import ClavenarOptions, ClavenarVerdictContext
+from clavenar_agent_sdk.transport import (
     NormalizedToolCall,
     inspect_tool_use,
     inspect_tool_use_sync,

@@ -1,6 +1,6 @@
 # Security Policy
 
-`clavenar-ai` (Python) is the client half of a security product. We take
+`clavenar-agent-sdk` (Python) is the client half of a security product. We take
 vulnerability reports seriously and aim to acknowledge every report
 within 72 hours.
 
@@ -22,7 +22,7 @@ in your initial email and we will arrange one.
 
 In scope:
 
-- The `clavenar_ai` package: client-side request shaping, the wrap
+- The `clavenar_agent_sdk` package: client-side request shaping, the wrap
   surface (`clavenar_wrap`, `clavenar_messages`), inspection request
   signing, retry / pending poll loops, and the
   `ClavenarDenied` / `ClavenarPending` / `ClavenarTransportError` raise

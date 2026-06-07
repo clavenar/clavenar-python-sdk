@@ -10,7 +10,7 @@ arrives, the model has committed and the full argument payload is
 present.
 
 Usage:
-    pip install clavenar-ai websockets
+    pip install clavenar-agent-sdk websockets
     python examples/openai_realtime_recipe.py
 """
 
@@ -21,7 +21,7 @@ import json
 import os
 from typing import Any
 
-from clavenar_ai import (
+from clavenar_agent_sdk import (
     ClavenarOptions,
     inspect_realtime_function_call,
     is_realtime_function_call_done,

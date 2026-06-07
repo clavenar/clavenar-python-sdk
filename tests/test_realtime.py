@@ -5,8 +5,8 @@ from __future__ import annotations
 import httpx
 import respx
 
-from clavenar_ai.options import ClavenarOptions
-from clavenar_ai.realtime import (
+from clavenar_agent_sdk.options import ClavenarOptions
+from clavenar_agent_sdk.realtime import (
     inspect_realtime_function_call,
     is_realtime_function_call_done,
     normalize_realtime_function_call,

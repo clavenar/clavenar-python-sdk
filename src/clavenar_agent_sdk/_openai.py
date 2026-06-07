@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from clavenar_ai.transport import NormalizedToolCall
+from clavenar_agent_sdk.transport import NormalizedToolCall
 
 
 def extract_tool_calls(result: Any) -> list[NormalizedToolCall]:

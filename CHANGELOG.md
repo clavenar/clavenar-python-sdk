@@ -1,6 +1,14 @@
 # Changelog
 
-All notable changes to `clavenar-ai` (Python) are recorded here.
+All notable changes to `clavenar-agent-sdk` (Python) are recorded here.
+
+## 1.0.0 — 2026-06-07
+
+Renamed for the org's by-language SDK family. **Breaking:** the
+distribution is now `clavenar-agent-sdk` (was `clavenar-ai`) and the
+import module is `clavenar_agent_sdk` (was `clavenar_ai`); the GitHub
+repository is `clavenar-python-sdk`. Update `pip install` and your
+imports — the public API is otherwise unchanged from 0.2.0.
 
 ## 0.2.0 — 2026-05-12
 

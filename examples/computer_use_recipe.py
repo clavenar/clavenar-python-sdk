@@ -10,7 +10,7 @@ with rules keyed off ``input.params.name`` to deny what shouldn't
 execute.
 
 Usage:
-    pip install clavenar-ai anthropic
+    pip install clavenar-agent-sdk anthropic
     python examples/computer_use_recipe.py
 """
 
@@ -20,7 +20,7 @@ import asyncio
 import os
 from typing import Any
 
-from clavenar_ai import (
+from clavenar_agent_sdk import (
     ClavenarDenied,
     ClavenarOptions,
     ClavenarPending,

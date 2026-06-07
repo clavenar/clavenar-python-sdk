@@ -30,22 +30,22 @@ from collections.abc import AsyncIterable, Iterable
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from clavenar_ai._anthropic import extract_tool_uses
-from clavenar_ai._openai import extract_tool_calls
-from clavenar_ai.errors import (
+from clavenar_agent_sdk._anthropic import extract_tool_uses
+from clavenar_agent_sdk._openai import extract_tool_calls
+from clavenar_agent_sdk.errors import (
     ClavenarConfigError,
     ClavenarDenied,
     ClavenarPending,
     ClavenarTransportError,
 )
-from clavenar_ai.options import ClavenarOptions, ClavenarVerdictContext
-from clavenar_ai.stream import (
+from clavenar_agent_sdk.options import ClavenarOptions, ClavenarVerdictContext
+from clavenar_agent_sdk.stream import (
     wrap_anthropic_stream,
     wrap_anthropic_stream_sync,
     wrap_openai_chat_stream,
     wrap_openai_chat_stream_sync,
 )
-from clavenar_ai.transport import (
+from clavenar_agent_sdk.transport import (
     NormalizedToolCall,
     inspect_tool_use,
     inspect_tool_use_sync,

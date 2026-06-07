@@ -3,7 +3,7 @@ verdict lands. A denied tool raises mid-iteration before the partner
 can act on it.
 
 Usage:
-    pip install clavenar-ai anthropic
+    pip install clavenar-agent-sdk anthropic
     ANTHROPIC_API_KEY=... python examples/streaming_anthropic.py
 """
 
@@ -14,7 +14,7 @@ import os
 
 from anthropic import AsyncAnthropic
 
-from clavenar_ai import ClavenarDenied, ClavenarOptions, clavenar_wrap
+from clavenar_agent_sdk import ClavenarDenied, ClavenarOptions, clavenar_wrap
 
 
 async def main() -> None:

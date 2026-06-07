@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "clavenar-ai"
-version = "0.2.0"
+name = "clavenar-agent-sdk"
+version = "1.0.0"
 description = "Wrap your Anthropic / OpenAI Python client. Every tool call is inspected by Clavenar before it runs."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -38,11 +38,11 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/clavenar/clavenar-ai-py"
-Issues = "https://github.com/clavenar/clavenar-ai-py/issues"
+Repository = "https://github.com/clavenar/clavenar-python-sdk"
+Issues = "https://github.com/clavenar/clavenar-python-sdk/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/clavenar_ai"]
+packages = ["src/clavenar_agent_sdk"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -59,4 +59,4 @@ select = ["E", "F", "I", "W", "B", "UP", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-files = ["src/clavenar_ai"]
+files = ["src/clavenar_agent_sdk"]

@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from clavenar_ai.options import ClavenarOptions
+from clavenar_agent_sdk.options import ClavenarOptions
 
 FAKE_ENDPOINT = "http://clavenar-lite.test"
 

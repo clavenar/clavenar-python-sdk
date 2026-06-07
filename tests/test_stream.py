@@ -17,9 +17,9 @@ from conftest import (
     make_openai_tool_call_chunks,
 )
 
-from clavenar_ai.errors import ClavenarDenied, ClavenarPending
-from clavenar_ai.options import ClavenarOptions
-from clavenar_ai.stream import wrap_anthropic_stream, wrap_openai_chat_stream
+from clavenar_agent_sdk.errors import ClavenarDenied, ClavenarPending
+from clavenar_agent_sdk.options import ClavenarOptions
+from clavenar_agent_sdk.stream import wrap_anthropic_stream, wrap_openai_chat_stream
 
 
 def _enforce() -> ClavenarOptions:

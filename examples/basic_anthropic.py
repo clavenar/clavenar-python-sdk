@@ -1,4 +1,4 @@
-"""Minimal example: wrap AsyncAnthropic with clavenar-ai and catch a deny.
+"""Minimal example: wrap AsyncAnthropic with clavenar-agent-sdk and catch a deny.
 
 Run with a real Anthropic key + a real clavenar-lite at the endpoint.
 The /demo curated catalog ships a `sql_execute` scenario that
@@ -6,7 +6,7 @@ clavenar denies in policy — this script catches the deny and prints
 the reasons + correlation id.
 
 Usage:
-    pip install clavenar-ai anthropic
+    pip install clavenar-agent-sdk anthropic
     ANTHROPIC_API_KEY=... python examples/basic_anthropic.py
 """
 
@@ -17,7 +17,7 @@ import os
 
 from anthropic import AsyncAnthropic
 
-from clavenar_ai import ClavenarDenied, ClavenarOptions, clavenar_wrap
+from clavenar_agent_sdk import ClavenarDenied, ClavenarOptions, clavenar_wrap
 
 
 async def main() -> None:

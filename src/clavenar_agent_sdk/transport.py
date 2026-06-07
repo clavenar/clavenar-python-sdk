@@ -19,8 +19,8 @@ from typing import Any, Literal
 
 import httpx
 
-from clavenar_ai.errors import ClavenarTransportError
-from clavenar_ai.options import ClavenarOptions
+from clavenar_agent_sdk.errors import ClavenarTransportError
+from clavenar_agent_sdk.options import ClavenarOptions
 
 CORRELATION_HEADER = "x-clavenar-correlation-id"
 

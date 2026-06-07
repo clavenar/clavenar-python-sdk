@@ -12,7 +12,7 @@ denominator dict shape so the helper transplants into any of them
 with a trivial constructor swap.
 
 Usage:
-    pip install clavenar-ai langchain
+    pip install clavenar-agent-sdk langchain
     python examples/langchain_recipe.py
 """
 
@@ -26,7 +26,7 @@ import secrets
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from clavenar_ai import (
+from clavenar_agent_sdk import (
     NormalizedToolCall,
     ClavenarDenied,
     ClavenarOptions,

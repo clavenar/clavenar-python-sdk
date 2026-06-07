@@ -9,9 +9,9 @@ import pytest
 import respx
 from conftest import FAKE_ENDPOINT
 
-from clavenar_ai.errors import ClavenarTransportError
-from clavenar_ai.options import ClavenarOptions, ClavenarRetryOptions
-from clavenar_ai.transport import NormalizedToolCall, inspect_tool_use
+from clavenar_agent_sdk.errors import ClavenarTransportError
+from clavenar_agent_sdk.options import ClavenarOptions, ClavenarRetryOptions
+from clavenar_agent_sdk.transport import NormalizedToolCall, inspect_tool_use
 
 
 def _call() -> NormalizedToolCall:

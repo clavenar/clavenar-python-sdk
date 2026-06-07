@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from clavenar_ai.transport import ClavenarPendingView
+    from clavenar_agent_sdk.transport import ClavenarPendingView
 
 
 class ClavenarConfigError(Exception):

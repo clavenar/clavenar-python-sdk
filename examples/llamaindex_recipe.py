@@ -6,7 +6,7 @@ before handing it to LlamaIndex; the wrapped callable consults
 clavenar, then runs your handler on green / approved-pending.
 
 Usage:
-    pip install clavenar-ai llama-index
+    pip install clavenar-agent-sdk llama-index
     python examples/llamaindex_recipe.py
 """
 
@@ -20,7 +20,7 @@ import secrets
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from clavenar_ai import (
+from clavenar_agent_sdk import (
     NormalizedToolCall,
     ClavenarDenied,
     ClavenarOptions,

@@ -16,14 +16,14 @@ from conftest import (
     make_openai_completion_with_tool_call,
 )
 
-from clavenar_ai.errors import (
+from clavenar_agent_sdk.errors import (
     ClavenarConfigError,
     ClavenarDenied,
     ClavenarPending,
     ClavenarTransportError,
 )
-from clavenar_ai.options import ClavenarOptions
-from clavenar_ai.wrap import clavenar_wrap
+from clavenar_agent_sdk.options import ClavenarOptions
+from clavenar_agent_sdk.wrap import clavenar_wrap
 
 
 def _anthropic_client(response: dict) -> FakeAnthropicClient:

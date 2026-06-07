@@ -8,29 +8,29 @@ streams), a parked call raises `ClavenarPending` with an `await
 .resolve()` helper that blocks until an operator decides.
 """
 
-from clavenar_ai.errors import (
+from clavenar_agent_sdk.errors import (
     ClavenarConfigError,
     ClavenarDenied,
     ClavenarPending,
     ClavenarTransportError,
 )
-from clavenar_ai.options import (
+from clavenar_agent_sdk.options import (
     ClavenarOptions,
     ClavenarRetryOptions,
     ClavenarVerdictContext,
 )
-from clavenar_ai.realtime import (
+from clavenar_agent_sdk.realtime import (
     inspect_realtime_function_call,
     is_realtime_function_call_done,
     normalize_realtime_function_call,
 )
-from clavenar_ai.stream import (
+from clavenar_agent_sdk.stream import (
     wrap_anthropic_stream,
     wrap_anthropic_stream_sync,
     wrap_openai_chat_stream,
     wrap_openai_chat_stream_sync,
 )
-from clavenar_ai.transport import (
+from clavenar_agent_sdk.transport import (
     NormalizedToolCall,
     ClavenarVerdict,
     inspect_tool_use,
@@ -38,7 +38,7 @@ from clavenar_ai.transport import (
     poll_pending_once,
     poll_pending_once_sync,
 )
-from clavenar_ai.wrap import clavenar_wrap
+from clavenar_agent_sdk.wrap import clavenar_wrap
 
 __version__ = "0.2.0"
 

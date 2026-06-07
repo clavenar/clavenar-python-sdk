@@ -1,4 +1,4 @@
-# clavenar-ai (Python)
+# clavenar-agent-sdk (Python)
 
 Wrap your [Anthropic][anthropic] / [OpenAI][openai] Python client —
 async or sync. Every tool call the model emits is inspected by
@@ -15,7 +15,7 @@ decision-tree flowchart, live in
 import asyncio
 from anthropic import AsyncAnthropic
 
-from clavenar_ai import clavenar_wrap, ClavenarDenied, ClavenarOptions
+from clavenar_agent_sdk import clavenar_wrap, ClavenarDenied, ClavenarOptions
 
 async def main() -> None:
     client = clavenar_wrap(
@@ -40,7 +40,7 @@ OpenAI works the same way:
 
 ```python
 from openai import AsyncOpenAI
-from clavenar_ai import clavenar_wrap, ClavenarOptions
+from clavenar_agent_sdk import clavenar_wrap, ClavenarOptions
 
 client = clavenar_wrap(
     AsyncOpenAI(),
@@ -62,7 +62,7 @@ inspecting the underlying `create` method:
 
 ```python
 from anthropic import Anthropic
-from clavenar_ai import clavenar_wrap, ClavenarOptions
+from clavenar_agent_sdk import clavenar_wrap, ClavenarOptions
 
 client = clavenar_wrap(
     Anthropic(),
@@ -119,7 +119,7 @@ jittered exponential backoff. 200, 403, and other 4xx never retry.
 Defaults mirror the TS SDK at 0.3.0:
 
 ```python
-from clavenar_ai import ClavenarOptions, ClavenarRetryOptions
+from clavenar_agent_sdk import ClavenarOptions, ClavenarRetryOptions
 
 opts = ClavenarOptions(
     endpoint="...",
@@ -143,11 +143,11 @@ are trusted.
 ## Install
 
 ```bash
-pip install clavenar-ai
+pip install clavenar-agent-sdk
 ```
 
 Python 3.10+. Runtime dep is `httpx` only; the `anthropic` and
-`openai` packages are NOT imported by `clavenar-ai` — bring your own.
+`openai` packages are NOT imported by `clavenar-agent-sdk` — bring your own.
 
 ## Configuration
 

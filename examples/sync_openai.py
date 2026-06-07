@@ -3,7 +3,7 @@ is a normal sync function; clavenar_wrap routes it through the sync
 transport.
 
 Usage:
-    pip install clavenar-ai openai
+    pip install clavenar-agent-sdk openai
     OPENAI_API_KEY=... python examples/sync_openai.py
 """
 
@@ -13,7 +13,7 @@ import os
 
 from openai import OpenAI
 
-from clavenar_ai import ClavenarDenied, ClavenarOptions, clavenar_wrap
+from clavenar_agent_sdk import ClavenarDenied, ClavenarOptions, clavenar_wrap
 
 
 def main() -> None:

@@ -21,9 +21,9 @@ from conftest import (
     make_openai_completion_with_tool_call,
 )
 
-from clavenar_ai.errors import ClavenarDenied, ClavenarTransportError
-from clavenar_ai.options import ClavenarOptions
-from clavenar_ai.wrap import clavenar_wrap
+from clavenar_agent_sdk.errors import ClavenarDenied, ClavenarTransportError
+from clavenar_agent_sdk.options import ClavenarOptions
+from clavenar_agent_sdk.wrap import clavenar_wrap
 
 
 def _sync_anthropic(response: dict) -> FakeSyncAnthropicClient:
@@ -112,7 +112,7 @@ def test_sync_observe_transport_error_routes_to_callback() -> None:
 @respx.mock
 def test_sync_enforce_5xx_propagates_after_retries_exhausted() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(502))
-    from clavenar_ai.options import ClavenarRetryOptions
+    from clavenar_agent_sdk.options import ClavenarRetryOptions
 
     opts = ClavenarOptions(
         endpoint=FAKE_ENDPOINT,
