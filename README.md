@@ -94,6 +94,14 @@ async with client.messages.create(stream=True, ...) as stream:
 Both `AsyncAnthropic` + `AsyncOpenAI` streams and their sync
 counterparts (`Anthropic`, `OpenAI`) are supported.
 
+The provider SDKs' `.stream()` convenience helpers
+(`messages.stream()`, `chat.completions.stream()`) are **blocked** by
+the wrapper: their rich event interfaces can't be wrapped faithfully,
+so tool calls made through them would bypass inspection entirely.
+Calling one raises `ClavenarConfigError` pointing at
+`create(stream=True)`; set `allow_uninspected_stream=True` only if you
+explicitly accept uninspected streaming.
+
 ## Pending → resolve
 
 When clavenar parks a tool call for human review, `ClavenarPending` is

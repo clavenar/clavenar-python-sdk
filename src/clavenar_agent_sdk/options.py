@@ -65,6 +65,13 @@ class ClavenarOptions:
     token: str | None = None
     mode: ClavenarMode = "enforce"
     timeout_s: float = 10.0
+    # DANGEROUS: allow the provider SDK's `.stream()` helper
+    # (`messages.stream()` / `chat.completions.stream()`) to pass
+    # through UNINSPECTED. Off by default — the helper's rich event
+    # interface can't be wrapped faithfully, so tool calls made through
+    # it would bypass clavenar entirely. Prefer `create(stream=True)`,
+    # which is fully inspected.
+    allow_uninspected_stream: bool = False
     on_verdict: Callable[[ClavenarVerdict, ClavenarVerdictContext], Awaitable[None] | None] | None = (
         None
     )

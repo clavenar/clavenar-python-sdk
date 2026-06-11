@@ -197,3 +197,24 @@ async def test_text_only_response_bypasses_inspect() -> None:
     client = clavenar_wrap(_anthropic_client(text_only), ClavenarOptions(endpoint=FAKE_ENDPOINT))
     await client.messages.create(model="claude-x")
     assert route.call_count == 0
+
+
+def test_stream_helper_blocked_by_default() -> None:
+    """The provider SDK's .stream() helper bypasses inspection, so the
+    wrapper replaces it with a loud refusal unless explicitly allowed.
+    """
+    client = _anthropic_client(make_anthropic_message_with_tool_use())
+    client.messages.stream = lambda *a, **k: "raw-stream"  # type: ignore[attr-defined]
+    wrapped = clavenar_wrap(client, ClavenarOptions(endpoint=FAKE_ENDPOINT))
+    with pytest.raises(ClavenarConfigError, match=r"stream"):
+        wrapped.messages.stream()
+
+
+def test_stream_helper_opt_out_passes_through() -> None:
+    client = _anthropic_client(make_anthropic_message_with_tool_use())
+    client.messages.stream = lambda *a, **k: "raw-stream"  # type: ignore[attr-defined]
+    wrapped = clavenar_wrap(
+        client,
+        ClavenarOptions(endpoint=FAKE_ENDPOINT, allow_uninspected_stream=True),
+    )
+    assert wrapped.messages.stream() == "raw-stream"

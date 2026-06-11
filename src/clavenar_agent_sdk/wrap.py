@@ -102,6 +102,29 @@ def _detect_client(client: Any) -> tuple[ClientKind, ClientMode]:
     )
 
 
+def _guard_stream_helper(holder: Any, helper: str, opts: ClavenarOptions) -> None:
+    """Replace the provider SDK's un-wrappable `.stream()` helper with a
+    loud refusal — tool calls made through it would bypass inspection
+    entirely, defeating the wrapper's whole contract. `create(stream=
+    True)` is the inspected path; `allow_uninspected_stream=True` is
+    the explicit, dangerous opt-out (the original helper stays live).
+    """
+    if opts.allow_uninspected_stream:
+        return
+    if not callable(getattr(holder, "stream", None)):
+        return
+
+    def stream_blocked(*_args: Any, **_kwargs: Any) -> Any:
+        raise ClavenarConfigError(
+            f"clavenar_wrap: {helper} bypasses clavenar inspection and is "
+            "blocked. Use create(stream=True) (inspected), or set "
+            "allow_uninspected_stream=True to explicitly accept "
+            "uninspected streaming."
+        )
+
+    holder.stream = stream_blocked
+
+
 def _wrap_anthropic_async(client: Any, opts: ClavenarOptions) -> Any:
     inner = client.messages.create
 
@@ -114,6 +137,7 @@ def _wrap_anthropic_async(client: Any, opts: ClavenarOptions) -> Any:
         return result
 
     client.messages.create = create_wrapped
+    _guard_stream_helper(client.messages, "messages.stream()", opts)
     return client
 
 
@@ -129,6 +153,7 @@ def _wrap_anthropic_sync(client: Any, opts: ClavenarOptions) -> Any:
         return result
 
     client.messages.create = create_wrapped
+    _guard_stream_helper(client.messages, "messages.stream()", opts)
     return client
 
 
@@ -144,6 +169,7 @@ def _wrap_openai_async(client: Any, opts: ClavenarOptions) -> Any:
         return result
 
     client.chat.completions.create = create_wrapped
+    _guard_stream_helper(client.chat.completions, "chat.completions.stream()", opts)
     return client
 
 
@@ -159,6 +185,7 @@ def _wrap_openai_sync(client: Any, opts: ClavenarOptions) -> Any:
         return result
 
     client.chat.completions.create = create_wrapped
+    _guard_stream_helper(client.chat.completions, "chat.completions.stream()", opts)
     return client
 
 
