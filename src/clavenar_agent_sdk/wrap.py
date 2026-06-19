@@ -32,6 +32,7 @@ from urllib.parse import urlparse
 
 from clavenar_agent_sdk._anthropic import extract_tool_uses
 from clavenar_agent_sdk._openai import extract_tool_calls
+from clavenar_agent_sdk.devmode import emit_deny_panel
 from clavenar_agent_sdk.errors import (
     ClavenarConfigError,
     ClavenarDenied,
@@ -229,14 +230,18 @@ async def _inspect_all_async(calls: list[NormalizedToolCall], opts: ClavenarOpti
 
 def _raise_for_verdict_async(verdict: Any, call: NormalizedToolCall, opts: ClavenarOptions) -> None:
     if verdict.kind == "deny":
-        raise ClavenarDenied(
+        denied = ClavenarDenied(
             tool_name=call.name,
             reasons=verdict.reasons,
             review_reasons=verdict.review_reasons,
             intent_category=verdict.intent_category,
             layer=verdict.layer,
             correlation_id=verdict.correlation_id,
+            detail=verdict.detail,
         )
+        if opts.dev_mode:
+            emit_deny_panel(denied)
+        raise denied
     if verdict.kind == "pending":
         corr = verdict.correlation_id
 
@@ -299,14 +304,18 @@ def _inspect_all_sync(calls: list[NormalizedToolCall], opts: ClavenarOptions) ->
 
 def _raise_for_verdict_sync(verdict: Any, call: NormalizedToolCall, opts: ClavenarOptions) -> None:
     if verdict.kind == "deny":
-        raise ClavenarDenied(
+        denied = ClavenarDenied(
             tool_name=call.name,
             reasons=verdict.reasons,
             review_reasons=verdict.review_reasons,
             intent_category=verdict.intent_category,
             layer=verdict.layer,
             correlation_id=verdict.correlation_id,
+            detail=verdict.detail,
         )
+        if opts.dev_mode:
+            emit_deny_panel(denied)
+        raise denied
     if verdict.kind == "pending":
         corr = verdict.correlation_id
 

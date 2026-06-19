@@ -89,3 +89,11 @@ class ClavenarOptions:
     # Transient-failure retry policy. Defaults to 3 attempts with
     # jittered exponential backoff starting at 100ms.
     retry: ClavenarRetryOptions = field(default_factory=ClavenarRetryOptions)
+    # Developer mode: when a tool call is denied, render the gateway's
+    # verbose-verdict `detail` breakdown (per-detector scores, degraded
+    # lanes, reasons, correlation id) to stderr before raising. Off by
+    # default. The breakdown is present only when the gateway runs with
+    # CLAVENAR_PROXY_VERBOSE_VERDICTS=true (Lite --verbose-verdicts);
+    # otherwise a hint to enable it is printed. Dev/staging only —
+    # detailed denials are an attacker oracle.
+    dev_mode: bool = False

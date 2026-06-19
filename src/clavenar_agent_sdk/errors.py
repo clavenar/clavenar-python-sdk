@@ -39,6 +39,7 @@ class ClavenarDenied(Exception):
         intent_category: str,
         layer: str | None = None,
         correlation_id: str | None = None,
+        detail: dict | None = None,
     ) -> None:
         super().__init__(f"clavenar denied tool {tool_name!r}: {' | '.join(reasons)}")
         self.tool_name = tool_name
@@ -50,6 +51,10 @@ class ClavenarDenied(Exception):
         # operator-driven pending denials.
         self.layer = layer
         self.correlation_id = correlation_id
+        # Per-detector verbose-verdict breakdown when the gateway opts in
+        # (CLAVENAR_PROXY_VERBOSE_VERDICTS=true); None otherwise. Shape:
+        # {"detectors": [{"detector", "score", "flagged"?}], "degraded": [..]}.
+        self.detail = detail
 
 
 class ClavenarPending(Exception):

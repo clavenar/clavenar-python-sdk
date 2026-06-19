@@ -38,14 +38,16 @@ from clavenar_agent_sdk.transport import (
     poll_pending_once,
     poll_pending_once_sync,
 )
+from clavenar_agent_sdk.devmode import render_deny_panel
 from clavenar_agent_sdk.wrap import clavenar_wrap
 
-__version__ = "0.2.0"
+__version__ = "1.1.0"
 
 __all__ = [
     "NormalizedToolCall",
     "ClavenarConfigError",
     "ClavenarDenied",
+    "render_deny_panel",
     "ClavenarOptions",
     "ClavenarPending",
     "ClavenarRetryOptions",

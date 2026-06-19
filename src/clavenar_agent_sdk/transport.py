@@ -47,6 +47,10 @@ class _Deny:
     intent_category: str
     layer: str | None = None
     correlation_id: str | None = None
+    # Verbose-verdict per-detector breakdown, present only when the
+    # gateway runs with CLAVENAR_PROXY_VERBOSE_VERDICTS=true. Shape:
+    # {"detectors": [{"detector", "score", "flagged"?}], "degraded": [..]}.
+    detail: dict[str, Any] | None = None
     kind: Literal["deny"] = "deny"
 
 
@@ -215,6 +219,7 @@ def _parse_inspect_response(response: httpx.Response) -> ClavenarVerdict:
             intent_category=payload["intent_category"],
             layer=payload.get("layer"),
             correlation_id=correlation_id,
+            detail=payload.get("detail"),
         )
 
     if response.status_code == 202:
@@ -352,6 +357,8 @@ def _parse_deny_body(response: httpx.Response) -> dict[str, Any]:
         if isinstance(body.get("intent_category"), str)
         else "",
         "layer": body["layer"] if isinstance(body.get("layer"), str) else None,
+        # Optional verbose-verdict breakdown; kept as-is when a dict.
+        "detail": body["detail"] if isinstance(body.get("detail"), dict) else None,
     }
 
 

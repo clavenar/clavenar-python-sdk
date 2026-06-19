@@ -120,6 +120,46 @@ except ClavenarPending as p:
 Transient transport errors (5xx, network blips) are swallowed between
 polls. Terminal errors (404, 401) re-raise immediately.
 
+## Debugging a denied tool call
+
+`ClavenarDenied` carries `reasons`, `layer`, and `correlation_id`. To see
+*which detector* fired, run the gateway with
+`CLAVENAR_PROXY_VERBOSE_VERDICTS=true` (Lite: `--verbose-verdicts`) — the
+deny then carries a per-detector `detail` breakdown, exposed as
+`err.detail` and rendered to stderr when you set `dev_mode=True`:
+
+```python
+client = clavenar_wrap(
+    anthropic,
+    ClavenarOptions(
+        endpoint="https://clavenar.internal",
+        dev_mode=True,  # dev/staging only — detailed denials are an attacker oracle
+    ),
+)
+# On a deny, the SDK prints a panel to stderr:
+#   ━━ clavenar denied: send_email ━━
+#     layer=brain  intent=Exfiltration  correlation=abc-123
+#     detectors:
+#       persona_drift         0.12
+#       injection             0.91  ⚠ flagged
+#     degraded: injection
+```
+
+Programmatic access (no `dev_mode` needed):
+
+```python
+try:
+    await client.messages.create(...)
+except ClavenarDenied as e:
+    if e.detail:
+        fired = [d for d in e.detail["detectors"] if d.get("flagged") or d["score"] >= 0.5]
+        print("fired detectors:", fired)
+```
+
+`detail` is `None` unless the gateway opts in; without it the panel prints
+a hint to enable verbose verdicts. `render_deny_panel(err)` returns the
+string if you want it without writing to stderr.
+
 ## Retries
 
 Network errors and 5xx responses retry up to `max_attempts` with

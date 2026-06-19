@@ -24,6 +24,7 @@ from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from clavenar_agent_sdk.devmode import emit_deny_panel
 from clavenar_agent_sdk.errors import (
     ClavenarConfigError,
     ClavenarDenied,
@@ -378,13 +379,18 @@ async def _process_verdict(
     if not enforce:
         return
     if verdict.kind == "deny":
-        raise ClavenarDenied(
+        denied = ClavenarDenied(
             tool_name=call.name,
             reasons=verdict.reasons,
             review_reasons=verdict.review_reasons,
             intent_category=verdict.intent_category,
+            layer=verdict.layer,
             correlation_id=verdict.correlation_id,
+            detail=verdict.detail,
         )
+        if opts.dev_mode:
+            emit_deny_panel(denied)
+        raise denied
     if verdict.kind == "pending":
         corr = verdict.correlation_id
 
@@ -413,13 +419,18 @@ def _process_verdict_sync(
     if not enforce:
         return
     if verdict.kind == "deny":
-        raise ClavenarDenied(
+        denied = ClavenarDenied(
             tool_name=call.name,
             reasons=verdict.reasons,
             review_reasons=verdict.review_reasons,
             intent_category=verdict.intent_category,
+            layer=verdict.layer,
             correlation_id=verdict.correlation_id,
+            detail=verdict.detail,
         )
+        if opts.dev_mode:
+            emit_deny_panel(denied)
+        raise denied
     if verdict.kind == "pending":
         corr = verdict.correlation_id
 
