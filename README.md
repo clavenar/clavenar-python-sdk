@@ -213,7 +213,7 @@ Python 3.10+. Runtime dep is `httpx` only; the `anthropic` and
 ## Wire contract
 
 The HTTP shape this SDK speaks against the inspect endpoint
-(`POST /inspect`, the verdict envelope, the pending / resolve
+(`POST /mcp`, the verdict envelope, the pending / resolve
 contract, and the `X-Clavenar-*` header set) is documented in the
 workspace's source of truth:
 [`clavenar-specs/TECH_SPEC.md`](https://github.com/clavenar/clavenar-specs/blob/main/TECH_SPEC.md).

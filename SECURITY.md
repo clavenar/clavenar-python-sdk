@@ -23,8 +23,7 @@ in your initial email and we will arrange one.
 In scope:
 
 - The `clavenar_agent_sdk` package: client-side request shaping, the wrap
-  surface (`clavenar_wrap`, `clavenar_messages`), inspection request
-  signing, retry / pending poll loops, and the
+  surface (`clavenar_wrap`), retry / pending poll loops, and the
   `ClavenarDenied` / `ClavenarPending` / `ClavenarTransportError` raise
   contract.
 - Transport security between the SDK and the inspect endpoint

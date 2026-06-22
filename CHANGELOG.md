@@ -2,6 +2,16 @@
 
 All notable changes to `clavenar-agent-sdk` (Python) are recorded here.
 
+## 1.1.0 — 2026-06-08
+
+### Added
+
+- **Dev-mode deny rendering.** `ClavenarOptions(dev_mode=True)` prints a
+  per-detector deny panel to stderr on `ClavenarDenied` when the gateway
+  runs with verbose verdicts; `render_deny_panel(err)` returns the same
+  panel as a string. Dev/staging only — detailed denials are an attacker
+  oracle.
+
 ## 1.0.0 — 2026-06-07
 
 Renamed for the org's by-language SDK family. **Breaking:** the
