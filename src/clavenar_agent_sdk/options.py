@@ -25,7 +25,7 @@ class ClavenarRetryOptions:
     retry — they're verdicts or config errors, not transients.
 
     Set `max_attempts=1` to disable retries entirely. Defaults mirror
-    the TS SDK at 0.3.0.
+    the TS SDK at 1.1.0.
     """
 
     max_attempts: int = 3

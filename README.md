@@ -164,7 +164,7 @@ string if you want it without writing to stderr.
 
 Network errors and 5xx responses retry up to `max_attempts` with
 jittered exponential backoff. 200, 403, and other 4xx never retry.
-Defaults mirror the TS SDK at 0.3.0:
+Defaults mirror the TS SDK at 1.1.0:
 
 ```python
 from clavenar_agent_sdk import ClavenarOptions, ClavenarRetryOptions

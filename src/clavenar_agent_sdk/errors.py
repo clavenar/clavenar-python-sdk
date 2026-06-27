@@ -1,4 +1,4 @@
-"""Exception hierarchy mirroring `@clavenar/agent-sdk` 0.3.0.
+"""Exception hierarchy mirroring `@clavenar/agent-sdk` 1.1.0.
 
 A partner catching `ClavenarDenied` / `ClavenarPending` in Python should
 see the same fields they'd see in the TS SDK — name, reasons, review
@@ -90,10 +90,11 @@ class ClavenarPending(Exception):
     ) -> None:
         """Block until an operator decides. Returns on allow; raises ClavenarDenied on deny.
 
-        Transient transport errors (5xx, network blips) are swallowed
-        between polls. Terminal failures (401, 404, body-shape
-        mismatch) re-raise immediately as ClavenarTransportError. The
-        deadline is enforced as a hard wall-clock ceiling.
+        Transient transport errors (5xx, network blips, and body-shape
+        mismatches — the latter carry the poll's 200 status) are
+        swallowed between polls. Only 401/404 are terminal and re-raise
+        immediately as ClavenarTransportError. The deadline is enforced
+        as a hard wall-clock ceiling.
         """
         import asyncio
         import time
