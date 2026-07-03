@@ -8,7 +8,7 @@ no listener; it talks to a Clavenar gateway over HTTP.
 
 ## Build, test, lint
 - Dev install: `pip install -e '.[dev]'`
-- Build dist: `python -m build` (sdist + wheel; backend `hatchling`)
+- Build dist: `pip install build && python -m build` (`build` is not in `.[dev]`; sdist + wheel; backend `hatchling`)
 - Test: `pytest` (`asyncio_mode = "auto"`, `testpaths = ["tests"]`)
 - Lint: `ruff check` + `ruff format --check`
 - Types: `mypy src/clavenar_agent_sdk` (`strict`, pinned to py3.10 floor)
@@ -29,8 +29,8 @@ The wrapped client targets a Clavenar gateway at `ClavenarOptions.endpoint`
 - `realtime.py` — standalone OpenAI Realtime WS helpers (`inspect_realtime_function_call`, …).
 - `options.py` — `ClavenarOptions`, `ClavenarRetryOptions`, `ClavenarVerdictContext`.
 - `errors.py` — `ClavenarDenied` / `ClavenarPending` / `ClavenarTransportError` / `ClavenarConfigError`.
-- `devmode.py` — `render_deny_panel` (stderr deny panel when `dev_mode=True`).
-- `tests/`, `examples/` (anthropic/openai/langchain/llamaindex/realtime recipes), `docs/SEQUENCES.md`.
+- `devmode.py` — `render_deny_panel` (public: returns the deny-panel string); the internal `emit_deny_panel` writes it to stderr before the raise when `dev_mode=True`.
+- `tests/`, `examples/` (anthropic/openai/langchain/llamaindex/realtime/computer-use recipes), `docs/SEQUENCES.md`.
 
 ## Conventions & invariants
 - **Inspect-before-run is the whole product.** Every tool call is inspected before the partner code can act on it; never add a path that runs a tool ahead of its verdict.
