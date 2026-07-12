@@ -7,7 +7,7 @@ reasons, intent category, correlation id.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -137,3 +137,32 @@ class ClavenarPending(Exception):
         raise ClavenarTransportError(
             f"clavenar pending {self.correlation_id} not decided within {timeout_s}s"
         )
+
+
+class ClavenarRateLimited(Exception):
+    """Raised when clavenar returns a 429 — the request was rejected
+    *before* evaluation, by the request-velocity gate (`rate_limited`)
+    or the per-tenant spend gate (`quota_exceeded`). Not retried by the
+    transport: honor `retry_after_secs` (set on `rate_limited` only) or
+    fail the operation.
+    """
+
+    def __init__(
+        self,
+        *,
+        tool_name: str,
+        code: Literal["rate_limited", "quota_exceeded"],
+        reasons: list[str],
+        retry_after_secs: int | None = None,
+        layer: str | None = None,
+        correlation_id: str | None = None,
+    ) -> None:
+        suffix = f" (retry after {retry_after_secs}s)" if retry_after_secs is not None else ""
+        super().__init__(f"clavenar {code} for tool {tool_name!r}{suffix}")
+        self.tool_name = tool_name
+        self.code = code
+        self.reasons = reasons
+        # Seconds to wait before retrying; None on quota_exceeded.
+        self.retry_after_secs = retry_after_secs
+        self.layer = layer
+        self.correlation_id = correlation_id

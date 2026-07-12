@@ -21,7 +21,11 @@ from conftest import (
     make_openai_completion_with_tool_call,
 )
 
-from clavenar_agent_sdk.errors import ClavenarDenied, ClavenarTransportError
+from clavenar_agent_sdk.errors import (
+    ClavenarDenied,
+    ClavenarRateLimited,
+    ClavenarTransportError,
+)
 from clavenar_agent_sdk.options import ClavenarOptions
 from clavenar_agent_sdk.wrap import clavenar_wrap
 
@@ -107,6 +111,63 @@ def test_sync_observe_transport_error_routes_to_callback() -> None:
     result = client.messages.create(model="claude-x")
     assert result["stop_reason"] == "tool_use"
     assert errors == ["list_files:502"]
+
+
+@respx.mock
+def test_sync_enforce_429_raises_clavenar_rate_limited() -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(
+            429,
+            json={
+                "verdict": "rate_limited",
+                "layer": "proxy",
+                "error": "rate_limited",
+                "reasons": ["agent request velocity exceeded"],
+                "retry_after_secs": 30,
+            },
+        )
+    )
+    opts = ClavenarOptions(endpoint=FAKE_ENDPOINT, mode="enforce", timeout_s=2.0)
+    client = clavenar_wrap(
+        _sync_anthropic(make_anthropic_message_with_tool_use(tool_name="fetch_user")),
+        opts,
+    )
+    with pytest.raises(ClavenarRateLimited) as exc:
+        client.messages.create(model="claude-x")
+    assert exc.value.tool_name == "fetch_user"
+    assert exc.value.code == "rate_limited"
+    assert exc.value.retry_after_secs == 30
+    assert exc.value.layer == "proxy"
+
+
+@respx.mock
+def test_sync_observe_429_passes_through_with_callback() -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(
+            429,
+            json={
+                "verdict": "quota_exceeded",
+                "error": "quota_exceeded",
+                "reasons": ["tenant monthly spend cap reached"],
+            },
+        )
+    )
+    seen: list[str] = []
+
+    def on_verdict(verdict, ctx) -> None:  # type: ignore[no-untyped-def]
+        seen.append(f"{verdict.kind}:{verdict.code}:{ctx.tool_name}")
+
+    opts = ClavenarOptions(
+        endpoint=FAKE_ENDPOINT,
+        mode="observe",
+        timeout_s=2.0,
+        on_verdict=on_verdict,
+    )
+    client = clavenar_wrap(_sync_anthropic(make_anthropic_message_with_tool_use()), opts)
+    # Should NOT raise.
+    result = client.messages.create(model="claude-x")
+    assert result["stop_reason"] == "tool_use"
+    assert seen == ["rate_limited:quota_exceeded:list_files"]
 
 
 @respx.mock

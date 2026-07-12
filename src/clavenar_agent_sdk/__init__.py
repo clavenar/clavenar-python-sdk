@@ -5,13 +5,15 @@ Supports async (`AsyncAnthropic`, `AsyncOpenAI`) and sync
 responses. Tool calls are inspected by clavenar-lite before the partner
 sees them; a denied call raises `ClavenarDenied` (mid-iteration for
 streams), a parked call raises `ClavenarPending` with an `await
-.resolve()` helper that blocks until an operator decides.
+.resolve()` helper that blocks until an operator decides, and a 429
+from the velocity / spend gates raises `ClavenarRateLimited`.
 """
 
 from clavenar_agent_sdk.errors import (
     ClavenarConfigError,
     ClavenarDenied,
     ClavenarPending,
+    ClavenarRateLimited,
     ClavenarTransportError,
 )
 from clavenar_agent_sdk.options import (
@@ -50,6 +52,7 @@ __all__ = [
     "render_deny_panel",
     "ClavenarOptions",
     "ClavenarPending",
+    "ClavenarRateLimited",
     "ClavenarRetryOptions",
     "ClavenarTransportError",
     "ClavenarVerdict",

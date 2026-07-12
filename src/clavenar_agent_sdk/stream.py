@@ -29,6 +29,7 @@ from clavenar_agent_sdk.errors import (
     ClavenarConfigError,
     ClavenarDenied,
     ClavenarPending,
+    ClavenarRateLimited,
     ClavenarTransportError,
 )
 from clavenar_agent_sdk.options import ClavenarOptions, ClavenarVerdictContext
@@ -403,6 +404,15 @@ async def _process_verdict(
             review_reasons=verdict.review_reasons,
             poll_once=_poll,
         )
+    if verdict.kind == "rate_limited":
+        raise ClavenarRateLimited(
+            tool_name=call.name,
+            code=verdict.code,
+            reasons=verdict.reasons,
+            retry_after_secs=verdict.retry_after_secs,
+            layer=verdict.layer,
+            correlation_id=verdict.correlation_id,
+        )
 
 
 def _process_verdict_sync(
@@ -443,4 +453,13 @@ def _process_verdict_sync(
             correlation_id=verdict.correlation_id,
             review_reasons=verdict.review_reasons,
             poll_once=_poll_async,
+        )
+    if verdict.kind == "rate_limited":
+        raise ClavenarRateLimited(
+            tool_name=call.name,
+            code=verdict.code,
+            reasons=verdict.reasons,
+            retry_after_secs=verdict.retry_after_secs,
+            layer=verdict.layer,
+            correlation_id=verdict.correlation_id,
         )

@@ -20,6 +20,7 @@ from clavenar_agent_sdk.errors import (
     ClavenarConfigError,
     ClavenarDenied,
     ClavenarPending,
+    ClavenarRateLimited,
     ClavenarTransportError,
 )
 from clavenar_agent_sdk.options import ClavenarOptions
@@ -122,6 +123,47 @@ async def test_enforce_openai_deny_raises(opts: ClavenarOptions) -> None:
         await client.chat.completions.create(model="gpt-5")
 
 
+def _rate_limit_response(**extra: object) -> httpx.Response:
+    body: dict = {
+        "verdict": "rate_limited",
+        "layer": "proxy",
+        "error": "rate_limited",
+        "reasons": ["agent request velocity exceeded"],
+        "retry_after_secs": 30,
+        **extra,
+    }
+    return httpx.Response(429, json={k: v for k, v in body.items() if v is not None})
+
+
+@respx.mock
+async def test_enforce_429_raises_clavenar_rate_limited(opts: ClavenarOptions) -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=_rate_limit_response())
+    client = clavenar_wrap(
+        _anthropic_client(make_anthropic_message_with_tool_use(tool_name="fetch_user")),
+        opts,
+    )
+    with pytest.raises(ClavenarRateLimited) as exc:
+        await client.messages.create(model="claude-x")
+    assert exc.value.tool_name == "fetch_user"
+    assert exc.value.code == "rate_limited"
+    assert exc.value.retry_after_secs == 30
+    assert exc.value.layer == "proxy"
+
+
+@respx.mock
+async def test_enforce_429_quota_exceeded_without_retry_after(opts: ClavenarOptions) -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=_rate_limit_response(
+            verdict="quota_exceeded", error="quota_exceeded", retry_after_secs=None
+        )
+    )
+    client = clavenar_wrap(_anthropic_client(make_anthropic_message_with_tool_use()), opts)
+    with pytest.raises(ClavenarRateLimited) as exc:
+        await client.messages.create(model="claude-x")
+    assert exc.value.code == "quota_exceeded"
+    assert exc.value.retry_after_secs is None
+
+
 @respx.mock
 async def test_enforce_transport_failure_propagates(opts: ClavenarOptions) -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(side_effect=httpx.ConnectError("boom"))
@@ -184,6 +226,26 @@ async def test_observe_transport_error_routes_to_on_policy_error(
     result = await client.messages.create(model="claude-x")
     assert result["stop_reason"] == "tool_use"
     assert errors == ["list_files:502"]
+
+
+@respx.mock
+async def test_observe_429_passes_through_with_callback() -> None:
+    seen: list[str] = []
+
+    async def on_verdict(verdict, ctx) -> None:  # type: ignore[no-untyped-def]
+        seen.append(f"{verdict.kind}:{ctx.tool_name}")
+
+    opts = ClavenarOptions(
+        endpoint=FAKE_ENDPOINT,
+        mode="observe",
+        timeout_s=2.0,
+        on_verdict=on_verdict,
+    )
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=_rate_limit_response())
+    client = clavenar_wrap(_anthropic_client(make_anthropic_message_with_tool_use()), opts)
+    result = await client.messages.create(model="claude-x")
+    assert result["stop_reason"] == "tool_use"  # passes through
+    assert seen == ["rate_limited:list_files"]
 
 
 # ---- no-tool-use bypass ---------------------------------------------------

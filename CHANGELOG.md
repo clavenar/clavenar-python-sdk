@@ -2,6 +2,20 @@
 
 All notable changes to `clavenar-agent-sdk` (Python) are recorded here.
 
+## Unreleased
+
+### Added
+
+- **429 rate-limit verdicts.** An HTTP 429 from `POST /mcp` now parses
+  as a rate-limited verdict — `rate_limited` (request-velocity gate,
+  carries `retry_after_secs`) or `quota_exceeded` (per-tenant spend
+  gate) — instead of collapsing into a generic transport error.
+  Enforce mode raises the new `ClavenarRateLimited` (`tool_name`,
+  `code`, `reasons`, `retry_after_secs`, `layer`, `correlation_id`);
+  observe mode passes the response through and fires `on_verdict` with
+  the `rate_limited` verdict. A 429 is a verdict, never retried by the
+  backoff loop. Covers async, sync, and streaming paths.
+
 ## 1.1.0 — 2026-06-08
 
 ### Added

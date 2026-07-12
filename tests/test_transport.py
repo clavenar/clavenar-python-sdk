@@ -8,7 +8,12 @@ import respx
 
 from clavenar_agent_sdk.errors import ClavenarTransportError
 from clavenar_agent_sdk.options import ClavenarOptions
-from clavenar_agent_sdk.transport import NormalizedToolCall, inspect_tool_use, poll_pending_once
+from clavenar_agent_sdk.transport import (
+    NormalizedToolCall,
+    inspect_tool_use,
+    inspect_tool_use_sync,
+    poll_pending_once,
+)
 
 FAKE_ENDPOINT = "http://clavenar-lite.test"
 
@@ -115,6 +120,95 @@ async def test_pending_missing_correlation_id_raises() -> None:
             NormalizedToolCall(id="toolu_1", name="op", input={}),
             ClavenarOptions(endpoint=FAKE_ENDPOINT),
         )
+
+
+@respx.mock
+async def test_429_rate_limited_parses_retry_after() -> None:
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(
+            429,
+            json={
+                "verdict": "rate_limited",
+                "layer": "proxy",
+                "error": "rate_limited",
+                "reasons": ["agent request velocity exceeded"],
+                "correlation_id": "c-429",
+                "retry_after_secs": 17,
+            },
+        )
+    )
+    verdict = await inspect_tool_use(
+        NormalizedToolCall(id="toolu_1", name="fetch_user", input={}),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
+    )
+    assert verdict.kind == "rate_limited"
+    assert verdict.code == "rate_limited"
+    assert verdict.retry_after_secs == 17
+    assert verdict.layer == "proxy"
+    assert verdict.correlation_id == "c-429"
+    # A 429 is a verdict, not a transient failure — exactly one attempt.
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_429_quota_exceeded_without_retry_after() -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(
+            429,
+            json={
+                "verdict": "quota_exceeded",
+                "layer": "proxy",
+                "error": "quota_exceeded",
+                "reasons": ["tenant monthly spend cap reached"],
+            },
+        )
+    )
+    verdict = await inspect_tool_use(
+        NormalizedToolCall(id="toolu_1", name="fetch_user", input={}),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
+    )
+    assert verdict.kind == "rate_limited"
+    assert verdict.code == "quota_exceeded"
+    assert verdict.retry_after_secs is None
+
+
+@respx.mock
+async def test_429_malformed_body_raises_transport_error() -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(429, json={"wrong": "shape"})
+    )
+    with pytest.raises(ClavenarTransportError) as exc:
+        await inspect_tool_use(
+            NormalizedToolCall(id="toolu_1", name="fetch_user", input={}),
+            ClavenarOptions(endpoint=FAKE_ENDPOINT),
+        )
+    assert exc.value.status == 429
+
+
+@respx.mock
+def test_429_sync_rate_limited_single_attempt() -> None:
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(
+            429,
+            json={
+                "verdict": "rate_limited",
+                "layer": "proxy",
+                "error": "rate_limited",
+                "reasons": ["agent request velocity exceeded"],
+                "retry_after_secs": 17,
+            },
+            headers={"x-clavenar-correlation-id": "c-429"},
+        )
+    )
+    verdict = inspect_tool_use_sync(
+        NormalizedToolCall(id="toolu_1", name="fetch_user", input={}),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
+    )
+    assert verdict.kind == "rate_limited"
+    assert verdict.code == "rate_limited"
+    assert verdict.retry_after_secs == 17
+    assert verdict.correlation_id == "c-429"
+    assert route.call_count == 1
 
 
 @respx.mock

@@ -1,6 +1,6 @@
 """HTTP transport for clavenar-lite. Submits one normalized tool call,
-parses the verdict (allow / deny / pending), and surfaces correlation
-ids for ledger lookups.
+parses the verdict (allow / deny / pending / rate-limited), and surfaces
+correlation ids for ledger lookups.
 
 Both async and sync flavours live here. The sync flavour exists for
 partners wrapping `anthropic.Anthropic` / `openai.OpenAI` (the
@@ -61,7 +61,18 @@ class _Pending:
     kind: Literal["pending"] = "pending"
 
 
-ClavenarVerdict = _Allow | _Deny | _Pending
+@dataclass(frozen=True)
+class _RateLimited:
+    code: Literal["rate_limited", "quota_exceeded"]
+    reasons: list[str]
+    # Seconds to wait before retrying; None on quota_exceeded.
+    retry_after_secs: int | None = None
+    layer: str | None = None
+    correlation_id: str | None = None
+    kind: Literal["rate_limited"] = "rate_limited"
+
+
+ClavenarVerdict = _Allow | _Deny | _Pending | _RateLimited
 
 
 @dataclass(frozen=True)
@@ -92,8 +103,10 @@ async def inspect_tool_use(
 
     Retry semantics: network failures and 5xx retry up to
     `opts.retry.max_attempts` with jittered exponential backoff. 200,
-    403, and other 4xx never retry. Pass `client` to share a connection
-    pool across many inspections; omit to mint a single-shot one.
+    403, and 429 are verdicts and never retry (429 carries
+    `retry_after_secs` for the caller to honor); other 4xx never retry
+    either. Pass `client` to share a connection pool across many
+    inspections; omit to mint a single-shot one.
     """
     retry = opts.retry
     if retry.max_attempts < 1:
@@ -233,6 +246,16 @@ def _parse_inspect_response(response: httpx.Response) -> ClavenarVerdict:
         return _Pending(
             correlation_id=corr,
             review_reasons=payload["review_reasons"],
+        )
+
+    if response.status_code == 429:
+        payload = _parse_rate_limit_body(response)
+        return _RateLimited(
+            code=payload["code"],
+            reasons=payload["reasons"],
+            retry_after_secs=payload["retry_after_secs"],
+            layer=payload["layer"],
+            correlation_id=correlation_id or payload["correlation_id"],
         )
 
     text = _safe_text(response)
@@ -376,6 +399,32 @@ def _parse_pending_body(response: httpx.Response) -> dict[str, Any]:
     ):
         raise ClavenarTransportError(f"clavenar 202 with unexpected body shape: {body!r}", status=202)
     return body
+
+
+def _parse_rate_limit_body(response: httpx.Response) -> dict[str, Any]:
+    # Lenient like the deny parser: only the string `error` code is
+    # required; the verdict falls back to `rate_limited` when the body
+    # omits it (both codes ride HTTP 429).
+    try:
+        body = response.json()
+    except ValueError as e:
+        raise ClavenarTransportError(f"clavenar 429 with unparseable body: {e}", status=429) from e
+    if not isinstance(body, dict) or not isinstance(body.get("error"), str):
+        raise ClavenarTransportError(
+            f"clavenar 429 with unexpected body shape: {body!r}", status=429
+        )
+    reasons = body.get("reasons")
+    return {
+        "code": "quota_exceeded" if body.get("verdict") == "quota_exceeded" else "rate_limited",
+        "reasons": [s for s in reasons if isinstance(s, str)] if isinstance(reasons, list) else [],
+        "retry_after_secs": body["retry_after_secs"]
+        if isinstance(body.get("retry_after_secs"), int)
+        else None,
+        "layer": body["layer"] if isinstance(body.get("layer"), str) else None,
+        "correlation_id": body["correlation_id"]
+        if isinstance(body.get("correlation_id"), str)
+        else None,
+    }
 
 
 def _parse_pending_view(response: httpx.Response) -> ClavenarPendingView:
