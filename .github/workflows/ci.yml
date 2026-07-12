@@ -45,3 +45,33 @@ jobs:
 
       - name: build sdist + wheel
         run: python -m build
+
+  # Same posture as the Go/Java/.NET siblings, which all scan in the PR
+  # path — this package ships to PyPI and had no vuln/SBOM gate here.
+  supply-chain:
+    name: pip-audit + SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: install package + tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pip-audit cyclonedx-bom
+
+      - name: pip-audit
+        run: pip-audit
+
+      - name: generate CycloneDX SBOM
+        run: cyclonedx-py environment -o bom.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: bom.json
