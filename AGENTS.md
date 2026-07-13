@@ -33,6 +33,9 @@ The wrapped client targets a Clavenar gateway at `ClavenarOptions.endpoint`
 - `tests/`, `examples/` (anthropic/openai/langchain/llamaindex/realtime/computer-use recipes), `docs/SEQUENCES.md`.
 
 ## Conventions & invariants
+
+- After adding or updating a feature, also update the relevant `MANUAL_TESTS*` file(s) when needed.
+
 - **Inspect-before-run is the whole product.** Every tool call is inspected before the partner code can act on it; never add a path that runs a tool ahead of its verdict.
 - **No provider import.** Detect client shape structurally (duck-typing on `create`); keep `anthropic`/`openai` optional — don't import them at module load.
 - **Streaming gate.** Events pass through in order, but the closing event (Anthropic `content_block_stop`, OpenAI `finish_reason="tool_calls"`) is withheld until the verdict; a deny raises mid-iteration.
