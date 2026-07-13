@@ -50,6 +50,7 @@ Python coding standards (the ones that bite here):
 - Tests live in `tests/`; `asyncio_mode = "auto"` so `async def test_*` needs no marker. Use `respx` to stub `httpx`.
 - Comments: write none by default; one short line only when the *why* is non-obvious. Don't reference tasks/PRs in source.
 - Fix root causes, not symptoms — never silence a lint or type error to make it pass.
+- Commit subjects must start with a lowercase letter.
 
 ## Pointers
 README.md · SECURITY.md · docs/SEQUENCES.md · examples/ — the wire contract this SDK speaks (POST /mcp, verdict envelope, pending/resolve, `X-Clavenar-*` headers) is the source of truth in the public `clavenar-specs` TECH_SPEC.
