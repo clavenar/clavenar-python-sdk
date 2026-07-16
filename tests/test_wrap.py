@@ -118,7 +118,9 @@ async def test_enforce_openai_deny_raises(opts: ClavenarOptions) -> None:
             },
         )
     )
-    client = clavenar_wrap(_openai_client(make_openai_completion_with_tool_call(name="rm_rf")), opts)
+    client = clavenar_wrap(
+        _openai_client(make_openai_completion_with_tool_call(name="rm_rf")), opts
+    )
     with pytest.raises(ClavenarDenied):
         await client.chat.completions.create(model="gpt-5")
 

@@ -72,9 +72,9 @@ class ClavenarOptions:
     # it would bypass clavenar entirely. Prefer `create(stream=True)`,
     # which is fully inspected.
     allow_uninspected_stream: bool = False
-    on_verdict: Callable[[ClavenarVerdict, ClavenarVerdictContext], Awaitable[None] | None] | None = (
-        None
-    )
+    on_verdict: (
+        Callable[[ClavenarVerdict, ClavenarVerdictContext], Awaitable[None] | None] | None
+    ) = None
     on_policy_error: (
         Callable[
             [ClavenarTransportError, ClavenarVerdictContext],

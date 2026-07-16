@@ -21,10 +21,10 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from clavenar_agent_sdk import (
-    NormalizedToolCall,
     ClavenarDenied,
     ClavenarOptions,
     ClavenarPending,
+    NormalizedToolCall,
     inspect_tool_use,
 )
 

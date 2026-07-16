@@ -18,7 +18,7 @@ import json
 from typing import Any
 
 from clavenar_agent_sdk.options import ClavenarOptions
-from clavenar_agent_sdk.transport import NormalizedToolCall, ClavenarVerdict, inspect_tool_use
+from clavenar_agent_sdk.transport import ClavenarVerdict, NormalizedToolCall, inspect_tool_use
 
 
 def is_realtime_function_call_done(evt: dict[str, Any]) -> bool:

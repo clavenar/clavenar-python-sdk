@@ -39,7 +39,7 @@ class ClavenarDenied(Exception):
         intent_category: str,
         layer: str | None = None,
         correlation_id: str | None = None,
-        detail: dict | None = None,
+        detail: dict[str, object] | None = None,
     ) -> None:
         super().__init__(f"clavenar denied tool {tool_name!r}: {' | '.join(reasons)}")
         self.tool_name = tool_name

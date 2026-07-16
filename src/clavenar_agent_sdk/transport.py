@@ -139,7 +139,9 @@ async def _inspect_single_attempt(
         try:
             response = await client.post(url, json=body, headers=headers, timeout=opts.timeout_s)
         except httpx.TimeoutException as e:
-            raise ClavenarTransportError(f"clavenar inspect timed out after {opts.timeout_s}s") from e
+            raise ClavenarTransportError(
+                f"clavenar inspect timed out after {opts.timeout_s}s"
+            ) from e
         except httpx.HTTPError as e:
             raise ClavenarTransportError(f"clavenar inspect failed: {e}") from e
     finally:
@@ -192,7 +194,9 @@ def _inspect_single_attempt_sync(
         try:
             response = client.post(url, json=body, headers=headers, timeout=opts.timeout_s)
         except httpx.TimeoutException as e:
-            raise ClavenarTransportError(f"clavenar inspect timed out after {opts.timeout_s}s") from e
+            raise ClavenarTransportError(
+                f"clavenar inspect timed out after {opts.timeout_s}s"
+            ) from e
         except httpx.HTTPError as e:
             raise ClavenarTransportError(f"clavenar inspect failed: {e}") from e
     finally:
@@ -260,7 +264,8 @@ def _parse_inspect_response(response: httpx.Response) -> ClavenarVerdict:
 
     text = _safe_text(response)
     raise ClavenarTransportError(
-        f"clavenar inspect: unexpected status {response.status_code}" + (f": {text}" if text else ""),
+        f"clavenar inspect: unexpected status {response.status_code}"
+        + (f": {text}" if text else ""),
         status=response.status_code,
     )
 
@@ -365,7 +370,9 @@ def _parse_deny_body(response: httpx.Response) -> dict[str, Any]:
     except ValueError as e:
         raise ClavenarTransportError(f"clavenar 403 with unparseable body: {e}", status=403) from e
     if not isinstance(body, dict) or not isinstance(body.get("error"), str):
-        raise ClavenarTransportError(f"clavenar 403 with unexpected body shape: {body!r}", status=403)
+        raise ClavenarTransportError(
+            f"clavenar 403 with unexpected body shape: {body!r}", status=403
+        )
     # The shared envelope (lite + full-edition proxy) uses several error
     # codes / layers and omits empty review_reasons / absent
     # intent_category. Normalise so the caller sees the always-present
@@ -391,13 +398,17 @@ def _parse_pending_body(response: httpx.Response) -> dict[str, Any]:
     except ValueError as e:
         raise ClavenarTransportError(f"clavenar 202 with unparseable body: {e}", status=202) from e
     if not isinstance(body, dict):
-        raise ClavenarTransportError(f"clavenar 202 with unexpected body shape: {body!r}", status=202)
+        raise ClavenarTransportError(
+            f"clavenar 202 with unexpected body shape: {body!r}", status=202
+        )
     if (
         body.get("status") != "pending"
         or not isinstance(body.get("correlation_id"), str)
         or not isinstance(body.get("review_reasons"), list)
     ):
-        raise ClavenarTransportError(f"clavenar 202 with unexpected body shape: {body!r}", status=202)
+        raise ClavenarTransportError(
+            f"clavenar 202 with unexpected body shape: {body!r}", status=202
+        )
     return body
 
 

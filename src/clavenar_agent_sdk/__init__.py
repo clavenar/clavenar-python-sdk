@@ -9,6 +9,7 @@ streams), a parked call raises `ClavenarPending` with an `await
 from the velocity / spend gates raises `ClavenarRateLimited`.
 """
 
+from clavenar_agent_sdk.devmode import render_deny_panel
 from clavenar_agent_sdk.errors import (
     ClavenarConfigError,
     ClavenarDenied,
@@ -33,23 +34,20 @@ from clavenar_agent_sdk.stream import (
     wrap_openai_chat_stream_sync,
 )
 from clavenar_agent_sdk.transport import (
-    NormalizedToolCall,
     ClavenarVerdict,
+    NormalizedToolCall,
     inspect_tool_use,
     inspect_tool_use_sync,
     poll_pending_once,
     poll_pending_once_sync,
 )
-from clavenar_agent_sdk.devmode import render_deny_panel
 from clavenar_agent_sdk.wrap import clavenar_wrap
 
 __version__ = "1.1.0"
 
 __all__ = [
-    "NormalizedToolCall",
     "ClavenarConfigError",
     "ClavenarDenied",
-    "render_deny_panel",
     "ClavenarOptions",
     "ClavenarPending",
     "ClavenarRateLimited",
@@ -57,7 +55,9 @@ __all__ = [
     "ClavenarTransportError",
     "ClavenarVerdict",
     "ClavenarVerdictContext",
+    "NormalizedToolCall",
     "__version__",
+    "clavenar_wrap",
     "inspect_realtime_function_call",
     "inspect_tool_use",
     "inspect_tool_use_sync",
@@ -65,7 +65,7 @@ __all__ = [
     "normalize_realtime_function_call",
     "poll_pending_once",
     "poll_pending_once_sync",
-    "clavenar_wrap",
+    "render_deny_panel",
     "wrap_anthropic_stream",
     "wrap_anthropic_stream_sync",
     "wrap_openai_chat_stream",

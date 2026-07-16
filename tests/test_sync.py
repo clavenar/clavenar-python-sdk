@@ -87,7 +87,9 @@ def test_sync_openai_deny_raises() -> None:
         )
     )
     opts = ClavenarOptions(endpoint=FAKE_ENDPOINT, mode="enforce", timeout_s=2.0)
-    client = clavenar_wrap(_sync_openai(make_openai_completion_with_tool_call(name="exec_sql")), opts)
+    client = clavenar_wrap(
+        _sync_openai(make_openai_completion_with_tool_call(name="exec_sql")), opts
+    )
     with pytest.raises(ClavenarDenied):
         client.chat.completions.create(model="gpt-5")
 

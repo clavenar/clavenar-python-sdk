@@ -380,7 +380,9 @@ def _validate_options(opts: ClavenarOptions) -> None:
         raise ClavenarConfigError("clavenar_wrap: opts.endpoint is required")
     parsed = urlparse(opts.endpoint)
     if not parsed.scheme or not parsed.netloc:
-        raise ClavenarConfigError(f"clavenar_wrap: opts.endpoint is not a valid URL: {opts.endpoint!r}")
+        raise ClavenarConfigError(
+            f"clavenar_wrap: opts.endpoint is not a valid URL: {opts.endpoint!r}"
+        )
     if opts.timeout_s <= 0:
         raise ClavenarConfigError(
             f"clavenar_wrap: opts.timeout_s must be positive (got {opts.timeout_s})"

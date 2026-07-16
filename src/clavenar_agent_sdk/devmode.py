@@ -7,6 +7,7 @@ before raising `ClavenarDenied`. Pure render + a best-effort emit.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from typing import TYPE_CHECKING
 
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
     from clavenar_agent_sdk.errors import ClavenarDenied
 
 
-def render_deny_panel(denied: "ClavenarDenied") -> str:
+def render_deny_panel(denied: ClavenarDenied) -> str:
     """Render a denied tool call as a readable console panel string.
 
     Falls back to a hint when the gateway didn't include `detail`
@@ -65,9 +66,7 @@ def render_deny_panel(denied: "ClavenarDenied") -> str:
     return "\n".join(lines)
 
 
-def emit_deny_panel(denied: "ClavenarDenied") -> None:
+def emit_deny_panel(denied: ClavenarDenied) -> None:
     """Write the dev-mode deny panel to stderr. Best-effort — never raises."""
-    try:
+    with contextlib.suppress(Exception):
         print(render_deny_panel(denied), file=sys.stderr)
-    except Exception:  # noqa: BLE001 — dev-mode output must never break the raise
-        pass

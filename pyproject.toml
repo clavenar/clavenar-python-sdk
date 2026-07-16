@@ -30,11 +30,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8",
-    "pytest-asyncio>=0.23",
-    "ruff>=0.5",
-    "mypy>=1.10",
-    "respx>=0.21",
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.15.21",
+    "mypy==2.3.0",
+    "respx==0.23.1",
 ]
 
 [project.urls]

@@ -37,7 +37,7 @@ jobs:
       # every matrix interpreter would just re-check the same surface.
       # Keep it scoped to one job so feedback stays focused.
       - name: mypy
-        if: matrix.python-version == '3.10'
+        if: matrix.python-version == '3.10.20'
         run: mypy src/clavenar_agent_sdk
 
       - name: pytest
