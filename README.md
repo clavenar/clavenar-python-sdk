@@ -72,8 +72,10 @@ client = clavenar_wrap(
 result = client.messages.create(model="claude-opus-4-7", ...)
 ```
 
-Sync clients use `httpx.Client` under the hood and inspections run
-serially. Callbacks (`on_verdict`, `on_policy_error`) must be sync
+Sync clients use `httpx.Client` under the hood. Both sync and async wrappers
+select the side-effect-free `clavenar.decision/v1` contract with a UUID
+allocated before the first attempt; a multi-tool turn is one ordered atomic
+decision. Callbacks (`on_verdict`, `on_policy_error`) must be sync
 when wrapping a sync client.
 
 ## Streaming

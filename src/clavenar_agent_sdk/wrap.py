@@ -49,8 +49,8 @@ from clavenar_agent_sdk.stream import (
 )
 from clavenar_agent_sdk.transport import (
     NormalizedToolCall,
-    inspect_tool_use,
-    inspect_tool_use_sync,
+    inspect_tool_uses,
+    inspect_tool_uses_sync,
     poll_pending_once,
     poll_pending_once_sync,
 )
@@ -192,36 +192,30 @@ def _wrap_openai_sync(client: Any, opts: ClavenarOptions) -> Any:
 
 
 async def _inspect_all_async(calls: list[NormalizedToolCall], opts: ClavenarOptions) -> None:
-    """Inspect all tool calls concurrently via `asyncio.gather`; fire
-    callbacks in submission order; raise on the first deny/pending.
-    Observe-mode transport errors are caught per-call.
-    """
+    """Decide the complete ordered sibling set atomically."""
     if not calls:
         return
     enforce = opts.mode == "enforce"
 
-    async def one(call: NormalizedToolCall) -> tuple[NormalizedToolCall, Any]:
-        try:
-            verdict = await inspect_tool_use(call, opts)
-            return call, verdict
-        except ClavenarTransportError as e:
-            if not enforce:
-                return call, e
+    try:
+        verdict = await inspect_tool_uses(calls, opts)
+    except ClavenarTransportError as error:
+        if enforce:
             raise
+        for call in calls:
+            ctx = ClavenarVerdictContext(
+                tool_name=call.name, tool_use_id=call.id, tool_input=call.input
+            )
+            if opts.on_policy_error is not None:
+                await _maybe_await(opts.on_policy_error(error, ctx))
+        return
 
-    results = await asyncio.gather(*(one(c) for c in calls))
-
-    for call, result in results:
+    for call in calls:
         ctx = ClavenarVerdictContext(
             tool_name=call.name,
             tool_use_id=call.id,
             tool_input=call.input,
         )
-        if isinstance(result, ClavenarTransportError):
-            if opts.on_policy_error is not None:
-                await _maybe_await(opts.on_policy_error(result, ctx))
-            continue
-        verdict = result
         if opts.on_verdict is not None:
             await _maybe_await(opts.on_verdict(verdict, ctx))
         if not enforce:
@@ -267,39 +261,33 @@ def _raise_for_verdict_async(verdict: Any, call: NormalizedToolCall, opts: Clave
 
 
 def _inspect_all_sync(calls: list[NormalizedToolCall], opts: ClavenarOptions) -> None:
-    """Sync mirror of `_inspect_all_async`. Inspections run serially —
-    `asyncio.gather` has no sync equivalent and threading for I/O here
-    isn't worth the complexity for the 1-3 tool calls a typical turn
-    emits.
-    """
+    """Sync mirror of `_inspect_all_async`."""
     if not calls:
         return
     enforce = opts.mode == "enforce"
-    results: list[tuple[NormalizedToolCall, Any]] = []
-    for c in calls:
-        try:
-            results.append((c, inspect_tool_use_sync(c, opts)))
-        except ClavenarTransportError as e:
-            if not enforce:
-                results.append((c, e))
-                continue
+    try:
+        verdict = inspect_tool_uses_sync(calls, opts)
+    except ClavenarTransportError as error:
+        if enforce:
             raise
-    for call, result in results:
+        for call in calls:
+            ctx = ClavenarVerdictContext(
+                tool_name=call.name, tool_use_id=call.id, tool_input=call.input
+            )
+            if opts.on_policy_error is not None:
+                out = opts.on_policy_error(error, ctx)
+                if asyncio.iscoroutine(out):
+                    raise ClavenarConfigError(
+                        "on_policy_error returned a coroutine but the client is "
+                        "sync; use a sync callback for sync clients"
+                    ) from error
+        return
+    for call in calls:
         ctx = ClavenarVerdictContext(
             tool_name=call.name,
             tool_use_id=call.id,
             tool_input=call.input,
         )
-        if isinstance(result, ClavenarTransportError):
-            if opts.on_policy_error is not None:
-                out = opts.on_policy_error(result, ctx)
-                if asyncio.iscoroutine(out):
-                    raise ClavenarConfigError(
-                        "on_policy_error returned a coroutine but the client is "
-                        "sync; use a sync callback for sync clients"
-                    )
-            continue
-        verdict = result
         if opts.on_verdict is not None:
             out = opts.on_verdict(verdict, ctx)
             if asyncio.iscoroutine(out):

@@ -4,6 +4,22 @@ All notable changes to `clavenar-agent-sdk` (Python) are recorded here.
 
 ## Unreleased
 
+## 1.2.0 — 2026-07-21
+
+### Added
+
+- Async and sync governed-execution APIs with serializable prepared requests,
+  a registered executor, durable intent/completion storage, workload receipt
+  signing, and actual provider-result return.
+- The shared `clavenar.sdk-cross-language/v1` conformance fixture.
+
+### Changed
+
+- Inspection explicitly selects `clavenar.decision/v1` with a canonical UUID
+  allocated before the first attempt and retained across safe retries.
+  Multi-tool turns use one ordered atomic decision rather than independent
+  sibling requests.
+
 ### Added
 
 - **429 rate-limit verdicts.** An HTTP 429 from `POST /mcp` now parses

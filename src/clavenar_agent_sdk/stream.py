@@ -37,6 +37,8 @@ from clavenar_agent_sdk.transport import (
     NormalizedToolCall,
     inspect_tool_use,
     inspect_tool_use_sync,
+    inspect_tool_uses,
+    inspect_tool_uses_sync,
     poll_pending_once,
     poll_pending_once_sync,
 )
@@ -307,20 +309,16 @@ async def _inspect_choice_batch(
     if not calls:
         return
 
-    async def one(c: NormalizedToolCall) -> tuple[NormalizedToolCall, Any]:
-        try:
-            return c, await inspect_tool_use(c, opts)
-        except ClavenarTransportError as e:
-            if not enforce:
-                return c, e
+    try:
+        verdict = await inspect_tool_uses(calls, opts)
+    except ClavenarTransportError as error:
+        if enforce:
             raise
-
-    results = await asyncio.gather(*(one(c) for c in calls))
-    for call, result in results:
-        if isinstance(result, ClavenarTransportError):
-            await _fire_policy_error(result, call, opts)
-            continue
-        await _process_verdict(result, call, opts, enforce)
+        for call in calls:
+            await _fire_policy_error(error, call, opts)
+        return
+    for call in calls:
+        await _process_verdict(verdict, call, opts, enforce)
 
 
 def _inspect_choice_batch_sync(
@@ -328,20 +326,16 @@ def _inspect_choice_batch_sync(
 ) -> None:
     if not calls:
         return
-    results: list[tuple[NormalizedToolCall, Any]] = []
-    for c in calls:
-        try:
-            results.append((c, inspect_tool_use_sync(c, opts)))
-        except ClavenarTransportError as e:
-            if not enforce:
-                results.append((c, e))
-                continue
+    try:
+        verdict = inspect_tool_uses_sync(calls, opts)
+    except ClavenarTransportError as error:
+        if enforce:
             raise
-    for call, result in results:
-        if isinstance(result, ClavenarTransportError):
-            _fire_policy_error_sync(result, call, opts)
-            continue
-        _process_verdict_sync(result, call, opts, enforce)
+        for call in calls:
+            _fire_policy_error_sync(error, call, opts)
+        return
+    for call in calls:
+        _process_verdict_sync(verdict, call, opts, enforce)
 
 
 async def _fire_policy_error(

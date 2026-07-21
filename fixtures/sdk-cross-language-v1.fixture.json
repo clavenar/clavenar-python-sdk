@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "contract": "clavenar.sdk-cross-language/v1",
+  "decision": {
+    "headers": {
+      "x-clavenar-decision-contract": "clavenar.decision/v1",
+      "x-clavenar-idempotency-id": "cfcc8767-4c73-41cc-8ece-b855863924c4"
+    },
+    "single_request": {
+      "jsonrpc": "2.0",
+      "id": "cfcc8767-4c73-41cc-8ece-b855863924c4",
+      "method": "tools/call",
+      "params": {
+        "name": "payments.transfer",
+        "arguments": { "amount": 100 }
+      }
+    },
+    "atomic_batch_request": {
+      "jsonrpc": "2.0",
+      "id": "cfcc8767-4c73-41cc-8ece-b855863924c4",
+      "method": "clavenar/tools.batch",
+      "params": {
+        "name": "clavenar.atomic-batch",
+        "arguments": {
+          "contract": "clavenar.atomic-tool-call-batch/v1",
+          "calls": [
+            { "id": "call-a", "name": "payments.transfer", "arguments": { "amount": 100 } },
+            { "id": "call-b", "name": "ledger.annotate", "arguments": { "note": "approved" } }
+          ]
+        }
+      }
+    }
+  },
+  "durable_store": {
+    "intent": {
+      "contract": "clavenar.sdk-durable-intent-outbox/v1",
+      "stage": "execution.intent",
+      "authorization_id": "354c33ed-e5d3-4af7-a1b8-b009d50b0bc5",
+      "idempotency_id": "cfcc8767-4c73-41cc-8ece-b855863924c4",
+      "tenant": "acme",
+      "workload_id": "payments-agent",
+      "workload_spiffe": "spiffe://clavenar.local/tenant/acme/agent/payments-agent/instance/one",
+      "payload_sha256": "sha256:269123e546c75ec2df26ce4a52baeab92e58afdfabcb111c3e9069a37f78f1c5",
+      "executor_id": "payments-provider"
+    },
+    "completion": {
+      "contract": "clavenar.sdk-durable-intent-outbox/v1",
+      "stage": "execution.completed",
+      "authorization_id": "354c33ed-e5d3-4af7-a1b8-b009d50b0bc5",
+      "idempotency_id": "cfcc8767-4c73-41cc-8ece-b855863924c4",
+      "executor_id": "payments-provider",
+      "actual_result": { "ok": true },
+      "actual_result_sha256": "sha256:4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+      "effect_id": "provider-operation-123"
+    }
+  },
+  "executor": {
+    "request": {
+      "authorization_id": "354c33ed-e5d3-4af7-a1b8-b009d50b0bc5",
+      "idempotency_id": "cfcc8767-4c73-41cc-8ece-b855863924c4",
+      "executor_id": "payments-provider",
+      "execution_payload": {
+        "jsonrpc": "2.0",
+        "id": "cfcc8767-4c73-41cc-8ece-b855863924c4",
+        "method": "tools/call",
+        "params": { "name": "payments.transfer", "arguments": { "amount": 100 } }
+      }
+    },
+    "effect": {
+      "result": { "ok": true },
+      "effect_id": "provider-operation-123"
+    }
+  },
+  "provider_results": {
+    "anthropic": {
+      "type": "tool_result",
+      "tool_use_id": "call-a",
+      "content": { "ok": true }
+    },
+    "openai": {
+      "role": "tool",
+      "tool_call_id": "call-a",
+      "content": "{\"ok\":true}"
+    }
+  },
+  "receipt": {
+    "contract": "clavenar.execution/v1",
+    "stage": "execution.completed",
+    "authorization_id": "354c33ed-e5d3-4af7-a1b8-b009d50b0bc5",
+    "idempotency_id": "cfcc8767-4c73-41cc-8ece-b855863924c4",
+    "payload_sha256": "sha256:269123e546c75ec2df26ce4a52baeab92e58afdfabcb111c3e9069a37f78f1c5",
+    "result_sha256": "sha256:4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+    "effect_id": "provider-operation-123",
+    "workload_signature": {
+      "algorithm": "ES256",
+      "credential_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+  },
+  "fail_closed": [
+    "missing_durable_store",
+    "missing_registered_executor",
+    "idempotency_substitution",
+    "payload_substitution",
+    "intent_commit_failure",
+    "completion_commit_failure"
+  ]
+}

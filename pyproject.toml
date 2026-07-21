@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "clavenar-agent-sdk"
-version = "1.1.0"
+version = "1.2.0"
 description = "Wrap your Anthropic / OpenAI Python client. Every tool call is inspected by Clavenar before it runs."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -43,6 +43,9 @@ Issues = "https://github.com/clavenar/clavenar-python-sdk/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/clavenar_agent_sdk"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"fixtures/sdk-cross-language-v1.fixture.json" = "clavenar_agent_sdk/fixtures/sdk-cross-language-v1.fixture.json"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

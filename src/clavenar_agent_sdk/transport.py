@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import random
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -23,6 +24,9 @@ from clavenar_agent_sdk.errors import ClavenarTransportError
 from clavenar_agent_sdk.options import ClavenarOptions
 
 CORRELATION_HEADER = "x-clavenar-correlation-id"
+DECISION_CONTRACT = "clavenar.decision/v1"
+DECISION_CONTRACT_HEADER = "x-clavenar-decision-contract"
+IDEMPOTENCY_ID_HEADER = "x-clavenar-idempotency-id"
 
 
 @dataclass(frozen=True)
@@ -108,13 +112,38 @@ async def inspect_tool_use(
     either. Pass `client` to share a connection pool across many
     inspections; omit to mint a single-shot one.
     """
+    idempotency_id = str(uuid.uuid4())
+    return await _inspect_decision(
+        _inspect_body(tool_call, idempotency_id), idempotency_id, opts, client
+    )
+
+
+async def inspect_tool_uses(
+    tool_calls: list[NormalizedToolCall],
+    opts: ClavenarOptions,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> ClavenarVerdict:
+    """Submit one ordered atomic decision for a complete provider turn."""
+    idempotency_id = str(uuid.uuid4())
+    return await _inspect_decision(
+        _atomic_batch_body(tool_calls, idempotency_id), idempotency_id, opts, client
+    )
+
+
+async def _inspect_decision(
+    body: dict[str, Any],
+    idempotency_id: str,
+    opts: ClavenarOptions,
+    client: httpx.AsyncClient | None,
+) -> ClavenarVerdict:
     retry = opts.retry
     if retry.max_attempts < 1:
         raise ClavenarTransportError(f"retry.max_attempts must be >= 1, got {retry.max_attempts}")
     last_err: ClavenarTransportError | None = None
     for attempt in range(retry.max_attempts):
         try:
-            return await _inspect_single_attempt(tool_call, opts, client)
+            return await _inspect_single_attempt(body, idempotency_id, opts, client)
         except ClavenarTransportError as e:
             last_err = e
             if not _is_retriable(e) or attempt == retry.max_attempts - 1:
@@ -124,12 +153,12 @@ async def inspect_tool_use(
 
 
 async def _inspect_single_attempt(
-    tool_call: NormalizedToolCall,
+    body: dict[str, Any],
+    idempotency_id: str,
     opts: ClavenarOptions,
     client: httpx.AsyncClient | None,
 ) -> ClavenarVerdict:
-    body = _inspect_body(tool_call)
-    headers = _inspect_headers(opts)
+    headers = _inspect_headers(opts, idempotency_id)
     url = _join_url(opts.endpoint, "/mcp")
     owned: httpx.AsyncClient | None = None
     if client is None:
@@ -163,13 +192,38 @@ def inspect_tool_use_sync(
     Same retry semantics as the async path, with `time.sleep` between
     attempts. Pass `client` to share a connection pool.
     """
+    idempotency_id = str(uuid.uuid4())
+    return _inspect_decision_sync(
+        _inspect_body(tool_call, idempotency_id), idempotency_id, opts, client
+    )
+
+
+def inspect_tool_uses_sync(
+    tool_calls: list[NormalizedToolCall],
+    opts: ClavenarOptions,
+    *,
+    client: httpx.Client | None = None,
+) -> ClavenarVerdict:
+    """Sync mirror of :func:`inspect_tool_uses`."""
+    idempotency_id = str(uuid.uuid4())
+    return _inspect_decision_sync(
+        _atomic_batch_body(tool_calls, idempotency_id), idempotency_id, opts, client
+    )
+
+
+def _inspect_decision_sync(
+    body: dict[str, Any],
+    idempotency_id: str,
+    opts: ClavenarOptions,
+    client: httpx.Client | None,
+) -> ClavenarVerdict:
     retry = opts.retry
     if retry.max_attempts < 1:
         raise ClavenarTransportError(f"retry.max_attempts must be >= 1, got {retry.max_attempts}")
     last_err: ClavenarTransportError | None = None
     for attempt in range(retry.max_attempts):
         try:
-            return _inspect_single_attempt_sync(tool_call, opts, client)
+            return _inspect_single_attempt_sync(body, idempotency_id, opts, client)
         except ClavenarTransportError as e:
             last_err = e
             if not _is_retriable(e) or attempt == retry.max_attempts - 1:
@@ -179,12 +233,12 @@ def inspect_tool_use_sync(
 
 
 def _inspect_single_attempt_sync(
-    tool_call: NormalizedToolCall,
+    body: dict[str, Any],
+    idempotency_id: str,
     opts: ClavenarOptions,
     client: httpx.Client | None,
 ) -> ClavenarVerdict:
-    body = _inspect_body(tool_call)
-    headers = _inspect_headers(opts)
+    headers = _inspect_headers(opts, idempotency_id)
     url = _join_url(opts.endpoint, "/mcp")
     owned: httpx.Client | None = None
     if client is None:
@@ -206,17 +260,47 @@ def _inspect_single_attempt_sync(
     return _parse_inspect_response(response)
 
 
-def _inspect_body(tool_call: NormalizedToolCall) -> dict[str, Any]:
+def _inspect_body(tool_call: NormalizedToolCall, idempotency_id: str) -> dict[str, Any]:
     return {
         "jsonrpc": "2.0",
         "method": "tools/call",
         "params": {"name": tool_call.name, "arguments": tool_call.input},
-        "id": tool_call.id,
+        "id": idempotency_id,
     }
 
 
-def _inspect_headers(opts: ClavenarOptions) -> dict[str, str]:
-    headers = {"Content-Type": "application/json", **opts.extra_headers}
+def _atomic_batch_body(tool_calls: list[NormalizedToolCall], idempotency_id: str) -> dict[str, Any]:
+    if not 1 <= len(tool_calls) <= 128:
+        raise ClavenarTransportError("atomic decision batch must contain 1..128 calls")
+    ids = [call.id for call in tool_calls]
+    if any(not call.id or not call.name for call in tool_calls) or len(ids) != len(set(ids)):
+        raise ClavenarTransportError(
+            "atomic decision batch requires unique non-empty call ids and names"
+        )
+    return {
+        "jsonrpc": "2.0",
+        "id": idempotency_id,
+        "method": "clavenar/tools.batch",
+        "params": {
+            "name": "clavenar.atomic-batch",
+            "arguments": {
+                "contract": "clavenar.atomic-tool-call-batch/v1",
+                "calls": [
+                    {"id": call.id, "name": call.name, "arguments": call.input}
+                    for call in tool_calls
+                ],
+            },
+        },
+    }
+
+
+def _inspect_headers(opts: ClavenarOptions, idempotency_id: str) -> dict[str, str]:
+    headers = {
+        "Content-Type": "application/json",
+        DECISION_CONTRACT_HEADER: DECISION_CONTRACT,
+        IDEMPOTENCY_ID_HEADER: idempotency_id,
+        **opts.extra_headers,
+    }
     if opts.token:
         headers["Authorization"] = f"Bearer {opts.token}"
     return headers

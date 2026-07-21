@@ -72,7 +72,7 @@ sequenceDiagram
     Note over Caller,Patch: every other attribute (client.beta, client.models, custom subclasses) untouched
 ```
 
-## 2. Async non-streaming inspection — `asyncio.gather` parallel, submission-order raise
+## 2. Async non-streaming inspection — one ordered atomic decision
 
 When the partner `await`s `client.messages.create(...)`, the patched
 `create_wrapped` calls upstream, walks `content[]` for `tool_use`

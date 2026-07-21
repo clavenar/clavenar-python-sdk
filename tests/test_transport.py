@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -12,10 +14,32 @@ from clavenar_agent_sdk.transport import (
     NormalizedToolCall,
     inspect_tool_use,
     inspect_tool_use_sync,
+    inspect_tool_uses,
     poll_pending_once,
 )
 
 FAKE_ENDPOINT = "http://clavenar-lite.test"
+
+
+@respx.mock
+async def test_decision_selector_and_atomic_batch() -> None:
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200))
+    await inspect_tool_uses(
+        [
+            NormalizedToolCall(id="call-a", name="first", input={"n": 1}),
+            NormalizedToolCall(id="call-b", name="second", input={"n": 2}),
+        ],
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
+    )
+    request = route.calls[0].request
+    payload = json.loads(request.read().decode())
+    assert request.headers["x-clavenar-decision-contract"] == "clavenar.decision/v1"
+    assert request.headers["x-clavenar-idempotency-id"] == payload["id"]
+    assert payload["method"] == "clavenar/tools.batch"
+    assert [call["id"] for call in payload["params"]["arguments"]["calls"]] == [
+        "call-a",
+        "call-b",
+    ]
 
 
 @respx.mock

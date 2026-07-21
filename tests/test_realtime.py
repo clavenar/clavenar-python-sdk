@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import uuid
+
 import httpx
 import respx
 
@@ -103,7 +106,7 @@ async def test_inspect_forwards_deny_on_403() -> None:
 
 
 @respx.mock
-async def test_inspect_uses_call_id_as_envelope_id() -> None:
+async def test_inspect_uses_stable_uuid_as_envelope_id() -> None:
     captured: dict[str, object] = {}
 
     def _handler(request: httpx.Request) -> httpx.Response:
@@ -117,5 +120,6 @@ async def test_inspect_uses_call_id_as_envelope_id() -> None:
     )
     body = captured["body"]
     assert isinstance(body, str)
-    assert '"id":"call_abc"' in body or '"id": "call_abc"' in body
+    parsed = json.loads(body)
+    uuid.UUID(parsed["id"])
     assert '"wire_transfer"' in body

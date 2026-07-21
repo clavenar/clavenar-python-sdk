@@ -17,6 +17,20 @@ from clavenar_agent_sdk.errors import (
     ClavenarRateLimited,
     ClavenarTransportError,
 )
+from clavenar_agent_sdk.governed_execution import (
+    AsyncDurableExecutionStore,
+    AsyncGovernedExecutionOptions,
+    ExecutionEffect,
+    GovernedExecutionOutcome,
+    PreparedToolRequest,
+    SyncDurableExecutionStore,
+    SyncGovernedExecutionOptions,
+    ToolExecutionRequest,
+    execute_prepared_tool,
+    execute_prepared_tool_sync,
+    execute_tool,
+    execute_tool_sync,
+)
 from clavenar_agent_sdk.options import (
     ClavenarOptions,
     ClavenarRetryOptions,
@@ -38,14 +52,18 @@ from clavenar_agent_sdk.transport import (
     NormalizedToolCall,
     inspect_tool_use,
     inspect_tool_use_sync,
+    inspect_tool_uses,
+    inspect_tool_uses_sync,
     poll_pending_once,
     poll_pending_once_sync,
 )
 from clavenar_agent_sdk.wrap import clavenar_wrap
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 __all__ = [
+    "AsyncDurableExecutionStore",
+    "AsyncGovernedExecutionOptions",
     "ClavenarConfigError",
     "ClavenarDenied",
     "ClavenarOptions",
@@ -55,12 +73,24 @@ __all__ = [
     "ClavenarTransportError",
     "ClavenarVerdict",
     "ClavenarVerdictContext",
+    "ExecutionEffect",
+    "GovernedExecutionOutcome",
     "NormalizedToolCall",
+    "PreparedToolRequest",
+    "SyncDurableExecutionStore",
+    "SyncGovernedExecutionOptions",
+    "ToolExecutionRequest",
     "__version__",
     "clavenar_wrap",
+    "execute_prepared_tool",
+    "execute_prepared_tool_sync",
+    "execute_tool",
+    "execute_tool_sync",
     "inspect_realtime_function_call",
     "inspect_tool_use",
     "inspect_tool_use_sync",
+    "inspect_tool_uses",
+    "inspect_tool_uses_sync",
     "is_realtime_function_call_done",
     "normalize_realtime_function_call",
     "poll_pending_once",
