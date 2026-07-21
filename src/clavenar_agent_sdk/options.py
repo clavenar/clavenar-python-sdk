@@ -17,12 +17,14 @@ ClavenarMode = Literal["enforce", "observe"]
 
 @dataclass(frozen=True)
 class ClavenarRetryOptions:
-    """Transient-failure retry policy for `inspect_tool_use`.
+    """Transient-failure retry policy for side-effect-free decisions.
 
     Network errors and 5xx responses retry up to `max_attempts` with
     jittered exponential backoff (`base_delay_s * 2^attempt` ceiling,
     sampled in `[ceiling/2, ceiling]`). 200, 403, and other 4xx never
-    retry — they're verdicts or config errors, not transients.
+    retry — they're verdicts or config errors, not transients. Every
+    decision attempt retains one pre-network idempotency ID. Registered
+    execution is outside this loop and is never retried.
 
     Set `max_attempts=1` to disable retries entirely. Defaults mirror
     the TS SDK at 1.1.0.

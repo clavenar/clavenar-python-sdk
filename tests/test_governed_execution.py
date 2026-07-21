@@ -135,3 +135,35 @@ async def test_intent_failure_invokes_no_executor() -> None:
             ),
         )
     assert not called
+
+
+@respx.mock
+async def test_executor_failure_is_never_retried() -> None:
+    route = respx.post(f"{ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(200, json=_authorization())
+    )
+    calls = 0
+
+    async def executor(_: ToolExecutionRequest) -> ExecutionEffect:
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("provider response lost")
+
+    async def signer(_: dict[str, Any]) -> dict[str, str]:
+        raise AssertionError("signer must not run")
+
+    with pytest.raises(RuntimeError, match="provider response lost"):
+        await execute_prepared_tool(
+            PREPARED,
+            AsyncGovernedExecutionOptions(
+                endpoint=ENDPOINT,
+                executor_id="payments-provider",
+                executor=executor,
+                durable_store=Store([]),
+                sign_receipt=signer,
+                max_attempts=3,
+                base_delay_s=0.001,
+            ),
+        )
+    assert route.call_count == 1
+    assert calls == 1

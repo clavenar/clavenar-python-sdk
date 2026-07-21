@@ -35,6 +35,13 @@ async def test_retries_502_then_succeeds() -> None:
     verdict = await inspect_tool_use(_call(), opts)
     assert verdict.kind == "allow"
     assert route.call_count == 3
+    requests = [call.request for call in route.calls]
+    assert len({request.content for request in requests}) == 1
+    assert len({request.headers["x-clavenar-idempotency-id"] for request in requests}) == 1
+    assert all(
+        request.headers["x-clavenar-decision-contract"] == "clavenar.decision/v1"
+        for request in requests
+    )
 
 
 @respx.mock
