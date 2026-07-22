@@ -75,7 +75,9 @@ result = client.messages.create(model="claude-opus-4-7", ...)
 Sync clients use `httpx.Client` under the hood. Both sync and async wrappers
 select the side-effect-free `clavenar.decision/v1` contract with a UUID
 allocated before the first attempt; a multi-tool turn is one ordered atomic
-decision. Callbacks (`on_verdict`, `on_policy_error`) must be sync
+decision. Proxy 0.5.0 and Lite 0.9.0 reject unselected tool calls with HTTP 426;
+upgrade this SDK before the gateway by following
+<https://clavenar.com/docs/sdk-migration/>. Callbacks (`on_verdict`, `on_policy_error`) must be sync
 when wrapping a sync client.
 
 ## Streaming

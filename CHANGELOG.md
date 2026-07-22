@@ -4,6 +4,14 @@ All notable changes to `clavenar-agent-sdk` (Python) are recorded here.
 
 ## Unreleased
 
+## 1.4.0 — 2026-07-21
+
+### Changed
+
+- Package the exact `clavenar.client-migration/v1` fixture and schema and
+  document the client-first rollout. Inspection remains an explicit
+  side-effect-free decision with its canonical pre-network request ID.
+
 ## 1.3.0 — 2026-07-21
 
 ### Changed

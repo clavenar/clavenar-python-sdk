@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "clavenar-agent-sdk"
-version = "1.3.0"
+version = "1.4.0"
 description = "Wrap your Anthropic / OpenAI Python client. Every tool call is inspected by Clavenar before it runs."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -48,6 +48,8 @@ packages = ["src/clavenar_agent_sdk"]
 "fixtures/sdk-cross-language-v1.fixture.json" = "clavenar_agent_sdk/fixtures/sdk-cross-language-v1.fixture.json"
 "fixtures/retry-separation-v1.fixture.json" = "clavenar_agent_sdk/fixtures/retry-separation-v1.fixture.json"
 "fixtures/retry-separation-v1.schema.json" = "clavenar_agent_sdk/fixtures/retry-separation-v1.schema.json"
+"fixtures/client-migration-v1.fixture.json" = "clavenar_agent_sdk/fixtures/client-migration-v1.fixture.json"
+"fixtures/client-migration-v1.schema.json" = "clavenar_agent_sdk/fixtures/client-migration-v1.schema.json"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
