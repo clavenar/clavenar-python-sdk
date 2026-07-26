@@ -4,6 +4,14 @@ All notable changes to `clavenar-agent-sdk` (Python) are recorded here.
 
 ## Unreleased
 
+## 1.5.0 — 2026-07-26
+
+### Added
+
+- `SecureTransportProfile` supplies reload-before-request CA/client identity,
+  token acquisition, separate connect/request deadlines, and explicit proxy
+  policy to async and sync inspection, authorization, and polling paths.
+
 ## 1.4.0 — 2026-07-21
 
 ### Changed

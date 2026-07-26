@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from clavenar_agent_sdk.errors import ClavenarTransportError
+    from clavenar_agent_sdk.secure_transport import SecureTransportProfile
     from clavenar_agent_sdk.transport import ClavenarVerdict
 
 
@@ -65,6 +66,7 @@ class ClavenarOptions:
 
     endpoint: str
     token: str | None = None
+    transport_profile: SecureTransportProfile | None = None
     mode: ClavenarMode = "enforce"
     timeout_s: float = 10.0
     # DANGEROUS: allow the provider SDK's `.stream()` helper

@@ -158,18 +158,27 @@ async def _inspect_single_attempt(
     opts: ClavenarOptions,
     client: httpx.AsyncClient | None,
 ) -> ClavenarVerdict:
+    if client is not None and opts.transport_profile is not None:
+        raise ClavenarTransportError(
+            "transport_profile cannot be combined with an injected HTTP client"
+        )
     headers = _inspect_headers(opts, idempotency_id)
     url = _join_url(opts.endpoint, "/mcp")
     owned: httpx.AsyncClient | None = None
     if client is None:
-        owned = httpx.AsyncClient(timeout=opts.timeout_s)
+        owned = (
+            opts.transport_profile.async_client()
+            if opts.transport_profile is not None
+            else httpx.AsyncClient(timeout=opts.timeout_s)
+        )
         client = owned
+    timeout_s = _request_timeout(opts)
     try:
         try:
-            response = await client.post(url, json=body, headers=headers, timeout=opts.timeout_s)
+            response = await client.post(url, json=body, headers=headers, timeout=timeout_s)
         except httpx.TimeoutException as e:
             raise ClavenarTransportError(
-                f"clavenar inspect timed out after {opts.timeout_s}s"
+                f"clavenar inspect timed out after {timeout_s}s"
             ) from e
         except httpx.HTTPError as e:
             raise ClavenarTransportError(f"clavenar inspect failed: {e}") from e
@@ -238,18 +247,27 @@ def _inspect_single_attempt_sync(
     opts: ClavenarOptions,
     client: httpx.Client | None,
 ) -> ClavenarVerdict:
+    if client is not None and opts.transport_profile is not None:
+        raise ClavenarTransportError(
+            "transport_profile cannot be combined with an injected HTTP client"
+        )
     headers = _inspect_headers(opts, idempotency_id)
     url = _join_url(opts.endpoint, "/mcp")
     owned: httpx.Client | None = None
     if client is None:
-        owned = httpx.Client(timeout=opts.timeout_s)
+        owned = (
+            opts.transport_profile.client()
+            if opts.transport_profile is not None
+            else httpx.Client(timeout=opts.timeout_s)
+        )
         client = owned
+    timeout_s = _request_timeout(opts)
     try:
         try:
-            response = client.post(url, json=body, headers=headers, timeout=opts.timeout_s)
+            response = client.post(url, json=body, headers=headers, timeout=timeout_s)
         except httpx.TimeoutException as e:
             raise ClavenarTransportError(
-                f"clavenar inspect timed out after {opts.timeout_s}s"
+                f"clavenar inspect timed out after {timeout_s}s"
             ) from e
         except httpx.HTTPError as e:
             raise ClavenarTransportError(f"clavenar inspect failed: {e}") from e
@@ -301,9 +319,26 @@ def _inspect_headers(opts: ClavenarOptions, idempotency_id: str) -> dict[str, st
         IDEMPOTENCY_ID_HEADER: idempotency_id,
         **opts.extra_headers,
     }
-    if opts.token:
-        headers["Authorization"] = f"Bearer {opts.token}"
+    token = _transport_token(opts)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     return headers
+
+
+def _transport_token(opts: ClavenarOptions) -> str | None:
+    if opts.token is not None and opts.transport_profile is not None:
+        raise ClavenarTransportError(
+            "token cannot be combined with transport_profile token acquisition"
+        )
+    return opts.transport_profile.token() if opts.transport_profile is not None else opts.token
+
+
+def _request_timeout(opts: ClavenarOptions) -> float:
+    return (
+        opts.transport_profile.request_timeout_s
+        if opts.transport_profile is not None
+        else opts.timeout_s
+    )
 
 
 def _parse_inspect_response(response: httpx.Response) -> ClavenarVerdict:
@@ -375,6 +410,10 @@ async def poll_pending_once(
     *,
     client: httpx.AsyncClient | None = None,
 ) -> ClavenarPendingView:
+    if client is not None and opts.transport_profile is not None:
+        raise ClavenarTransportError(
+            "transport_profile cannot be combined with an injected HTTP client"
+        )
     """Single `GET /pending/{correlation_id}` poll.
 
     Returns the parsed view; the caller's polling loop branches on
@@ -384,19 +423,25 @@ async def poll_pending_once(
     polls.
     """
     headers: dict[str, str] = dict(opts.extra_headers)
-    if opts.token:
-        headers["Authorization"] = f"Bearer {opts.token}"
+    token = _transport_token(opts)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
 
     url = _join_url(opts.endpoint, f"/pending/{correlation_id}")
     owned: httpx.AsyncClient | None = None
     if client is None:
-        owned = httpx.AsyncClient(timeout=opts.timeout_s)
+        owned = (
+            opts.transport_profile.async_client()
+            if opts.transport_profile is not None
+            else httpx.AsyncClient(timeout=opts.timeout_s)
+        )
         client = owned
+    timeout_s = _request_timeout(opts)
     try:
         try:
-            response = await client.get(url, headers=headers, timeout=opts.timeout_s)
+            response = await client.get(url, headers=headers, timeout=timeout_s)
         except httpx.TimeoutException as e:
-            raise ClavenarTransportError(f"clavenar poll timed out after {opts.timeout_s}s") from e
+            raise ClavenarTransportError(f"clavenar poll timed out after {timeout_s}s") from e
         except httpx.HTTPError as e:
             raise ClavenarTransportError(f"clavenar poll failed: {e}") from e
     finally:
@@ -418,21 +463,31 @@ def poll_pending_once_sync(
     *,
     client: httpx.Client | None = None,
 ) -> ClavenarPendingView:
+    if client is not None and opts.transport_profile is not None:
+        raise ClavenarTransportError(
+            "transport_profile cannot be combined with an injected HTTP client"
+        )
     """Sync mirror of `poll_pending_once`. Used by `ClavenarPending.resolve_sync`."""
     headers: dict[str, str] = dict(opts.extra_headers)
-    if opts.token:
-        headers["Authorization"] = f"Bearer {opts.token}"
+    token = _transport_token(opts)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
 
     url = _join_url(opts.endpoint, f"/pending/{correlation_id}")
     owned: httpx.Client | None = None
     if client is None:
-        owned = httpx.Client(timeout=opts.timeout_s)
+        owned = (
+            opts.transport_profile.client()
+            if opts.transport_profile is not None
+            else httpx.Client(timeout=opts.timeout_s)
+        )
         client = owned
+    timeout_s = _request_timeout(opts)
     try:
         try:
-            response = client.get(url, headers=headers, timeout=opts.timeout_s)
+            response = client.get(url, headers=headers, timeout=timeout_s)
         except httpx.TimeoutException as e:
-            raise ClavenarTransportError(f"clavenar poll timed out after {opts.timeout_s}s") from e
+            raise ClavenarTransportError(f"clavenar poll timed out after {timeout_s}s") from e
         except httpx.HTTPError as e:
             raise ClavenarTransportError(f"clavenar poll failed: {e}") from e
     finally:

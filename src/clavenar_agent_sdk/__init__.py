@@ -41,6 +41,7 @@ from clavenar_agent_sdk.realtime import (
     is_realtime_function_call_done,
     normalize_realtime_function_call,
 )
+from clavenar_agent_sdk.secure_transport import ProxyPolicy, SecureTransportProfile, TokenProvider
 from clavenar_agent_sdk.stream import (
     wrap_anthropic_stream,
     wrap_anthropic_stream_sync,
@@ -59,7 +60,7 @@ from clavenar_agent_sdk.transport import (
 )
 from clavenar_agent_sdk.wrap import clavenar_wrap
 
-__version__ = "1.2.0"
+__version__ = "1.5.0"
 
 __all__ = [
     "AsyncDurableExecutionStore",
@@ -77,8 +78,11 @@ __all__ = [
     "GovernedExecutionOutcome",
     "NormalizedToolCall",
     "PreparedToolRequest",
+    "ProxyPolicy",
+    "SecureTransportProfile",
     "SyncDurableExecutionStore",
     "SyncGovernedExecutionOptions",
+    "TokenProvider",
     "ToolExecutionRequest",
     "__version__",
     "clavenar_wrap",
