@@ -88,9 +88,7 @@ class SecureTransportProfile:
         proxy_url: str | None = None
         if self.proxy.mode == "explicit":
             if not self.proxy.url or not self.proxy.url.startswith(("http://", "https://")):
-                raise ClavenarConfigError(
-                    "secure transport explicit proxy must use HTTP or HTTPS"
-                )
+                raise ClavenarConfigError("secure transport explicit proxy must use HTTP or HTTPS")
             proxy_url = self.proxy.url
         elif self.proxy.mode not in {"direct", "environment"}:
             raise ClavenarConfigError(f"unknown secure transport proxy mode: {self.proxy.mode}")

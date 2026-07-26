@@ -177,9 +177,7 @@ async def _inspect_single_attempt(
         try:
             response = await client.post(url, json=body, headers=headers, timeout=timeout_s)
         except httpx.TimeoutException as e:
-            raise ClavenarTransportError(
-                f"clavenar inspect timed out after {timeout_s}s"
-            ) from e
+            raise ClavenarTransportError(f"clavenar inspect timed out after {timeout_s}s") from e
         except httpx.HTTPError as e:
             raise ClavenarTransportError(f"clavenar inspect failed: {e}") from e
     finally:
@@ -266,9 +264,7 @@ def _inspect_single_attempt_sync(
         try:
             response = client.post(url, json=body, headers=headers, timeout=timeout_s)
         except httpx.TimeoutException as e:
-            raise ClavenarTransportError(
-                f"clavenar inspect timed out after {timeout_s}s"
-            ) from e
+            raise ClavenarTransportError(f"clavenar inspect timed out after {timeout_s}s") from e
         except httpx.HTTPError as e:
             raise ClavenarTransportError(f"clavenar inspect failed: {e}") from e
     finally:
