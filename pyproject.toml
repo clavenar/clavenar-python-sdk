@@ -9,7 +9,7 @@ description = "Wrap your Anthropic / OpenAI Python client. Every tool call is in
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
-authors = [{ name = "VanteguardLabs", email = "vanteguardlabs@gmail.com" }]
+authors = [{ name = "Vanteguard Labs", email = "vanteguardlabs@gmail.com" }]
 keywords = ["agent", "ai", "security", "anthropic", "openai"]
 classifiers = [
     "Development Status :: 3 - Alpha",
