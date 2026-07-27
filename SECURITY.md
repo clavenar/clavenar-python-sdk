@@ -1,71 +1,126 @@
 # Security Policy
 
-`clavenar-agent-sdk` (Python) is the client half of a security product. We take
-vulnerability reports seriously and aim to acknowledge every report
-within 72 hours.
+<!-- clavenar-security-policy:v1 -->
+
+**Policy version:** 1.0.0  
+**Effective date:** 2026-07-27  
+**Canonical contact:** **vanteguardlabs@gmail.com**
+
+This is the canonical vulnerability-disclosure policy for every repository in
+the Clavenar release graph. Do not open a public issue for a suspected
+vulnerability.
 
 ## Reporting a vulnerability
 
-Email **vanteguardlabs@gmail.com** with:
+Email the canonical contact with:
 
-- A description of the issue and the impact you observed.
-- Steps to reproduce. A minimal proof-of-concept is appreciated but not
-  required if the issue is structural.
-- Affected file path, commit hash, and (if applicable) the
-  `ClavenarOptions` configuration that reproduces the issue.
-- Whether you would like public credit in the disclosure announcement.
+- a concise description of the issue and its security impact;
+- reproducible steps or a minimal proof of concept;
+- the affected repository, commit or immutable release digest, and surface;
+- any relevant configuration needed to reproduce the result; and
+- whether you want public credit.
 
-PGP/GPG: not yet available. If you need an encrypted channel, mention it
-in your initial email and we will arrange one.
+Do not include live credentials, personal data, customer data, or unnecessary
+production detail. PGP is not currently published; ask in the initial message
+if a separate encrypted exchange is required.
+
+## Supported versions
+
+| Source or artifact | Security support |
+|---|---|
+| Current `main` branch | Receives source fixes and is the source for the next release. It is not, by itself, a claim that a live deployment has updated. |
+| Latest immutable release published by the affected repository or stack release | Receives coordinated security fixes. |
+| Older releases, mutable tags, untagged snapshots, forks, and downstream modifications | Not supported unless a repository-specific notice says otherwise. |
+
+A repository with no published release supports its current `main` source
+only. Security fixes normally land on `main` and then in a new immutable
+release; we do not silently rewrite an existing release.
 
 ## Scope
 
 In scope:
 
-- The `clavenar_agent_sdk` package: client-side request shaping, the wrap
-  surface (`clavenar_wrap`), retry / pending poll loops, and the
-  `ClavenarDenied` / `ClavenarPending` / `ClavenarTransportError` raise
-  contract.
-- Transport security between the SDK and the inspect endpoint
-  (`endpoint` URL handling, TLS verification posture, header
-  forwarding via `extra_headers`).
-- The streaming intercept (Anthropic `content_block_stop` /
-  OpenAI `finish_reason="tool_calls"`) — verdict-before-tool ordering.
-- Sync vs async client detection in `clavenar_wrap`.
+- all 30 repositories named by the canonical Clavenar stack release policy,
+  including their root `SECURITY.md` files;
+- source, packages, binaries, container images, Helm artifacts, SBOMs, and
+  provenance that belong to an exact published Clavenar release;
+- Clavenar-owned public web endpoints and release/download endpoints; and
+- documented authentication, authorization, isolation, cryptographic,
+  audit-chain, policy-enforcement, update, and recovery boundaries.
 
-Out of scope:
+Private repositories are in scope for authorized reporters, but this policy
+does not authorize attempts to obtain access to them.
 
-- Authentication against upstream model providers (Anthropic API key,
-  OpenAI API key). Those flow through the upstream SDKs unchanged.
-- Sandboxing the Python runtime itself. The SDK runs in your process;
-  arbitrary Python is out of our trust boundary by construction.
-- Issues in `httpx`, `anthropic`, or `openai` upstream — please report
-  to those projects directly. We track CVE advisories that affect
-  pinned versions in `CHANGELOG.md`.
-- Findings against the demo flow on `demo.clavenar.com`
-  when caused by demo-specific configuration (the demo accepts
-  `X-Clavenar-Demo-Prefix` headers visitors mint themselves).
+Reports about a third-party dependency are welcome when they show a new
+Clavenar-specific impact or an unsafe integration/default. A dependency issue
+with no new Clavenar impact may be redirected to its upstream maintainer.
+
+## Runtime and deployment boundary
+
+Checked-in source, an immutable released artifact, a configured deployment,
+and current externally observed state are distinct evidence states. A source
+capability or fix is not a claim that every deployment is configured,
+reachable, or updated.
+
+Demo, simulator, development, evaluation, diagnostic, and administrative
+surfaces are not customer-production promises. They remain in scope for
+authentication, authorization, isolation, and unsafe-default defects when
+used as documented. Their exposure may be loopback, container-only,
+cluster-internal, or public depending on the exact release and configuration;
+this policy never treats loopback placement alone as an authorization
+boundary.
+
+Operator-provided infrastructure, credentials, policies, network controls,
+forks, and modifications are outside Clavenar's control. A defect in Clavenar
+that makes a documented configuration unsafe remains in scope.
+
+## Workflow and release evidence
+
+Only automation checked into the affected repository and receipts bound to an
+exact immutable release are evidence that a build, test, audit, SBOM,
+provenance, signing, or publication step ran. This policy makes no additional
+workflow promise. Repository workflow files and the protected stack-release
+receipt are authoritative for the checks they actually execute.
+
+The centrally enforced `clavenar.security-policy/v1` contract rejects a
+missing, stale, or divergent root policy across the exact 30-repository release
+graph.
+
+## Response process
+
+- **Within 72 hours:** acknowledge receipt and establish a private tracking
+  channel.
+- **Within 7 days:** provide an initial triage result, affected scope, severity
+  direction, and CVE plan when applicable.
+- **At least every 14 days while open:** provide a progress update or explain
+  why the schedule changed.
+- **Target within 90 days:** publish a coordinated fix and disclosure, or agree
+  on a revised date with the reporter.
+
+Complex multi-repository or ecosystem fixes may take longer. We will explain
+material schedule changes, coordinate credit, and avoid disclosing exploit
+details before a fix is reasonably available.
 
 ## Safe harbor
 
-We will not pursue civil or criminal action against researchers who:
+We will not pursue civil or criminal action against research that:
 
-- Make a good-faith effort to avoid privacy violations, destruction of
-  data, and interruption or degradation of our services.
-- Only interact with accounts they own or with explicit permission of
-  the account holder.
-- Give us reasonable time to respond before disclosing publicly.
-- Do not exploit a security issue beyond what is necessary to confirm
-  it.
+- is conducted in good faith on systems and accounts the researcher owns or
+  has explicit permission to test;
+- avoids privacy violations, persistence, data destruction, service
+  degradation, and access beyond what is needed to demonstrate impact;
+- stops and reports promptly after encountering sensitive data or unintended
+  access; and
+- allows reasonable time for remediation before public disclosure.
 
-## Response targets
+This safe harbor does not authorize testing third-party systems, social
+engineering, physical attacks, denial-of-service or volume testing, credential
+stuffing, spam, or violation of applicable law.
 
-- **72 hours**: acknowledgement of the report.
-- **7 days**: triage outcome (accepted / duplicate / out-of-scope) and a
-  CVE assignment plan if applicable.
-- **90 days**: public disclosure, coordinated with the reporter.
+## Disclosure
 
-We may extend the disclosure window for issues that require a
-coordinated multi-language fix (the TypeScript SDK at
-`clavenar-typescript-sdk` shares the same wire contract); we will tell you in
-advance and explain why.
+We prefer coordinated disclosure. A published advisory should identify the
+affected versions and immutable fixed release, credit the reporter if desired,
+and distinguish verified impact from assumptions. Duplicate or already-public
+issues remain welcome when the report adds a new affected path or material
+impact.
