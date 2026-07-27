@@ -34,7 +34,7 @@ jobs:
           test "$GITHUB_ACTOR" = "vanteguardlabs"
           [[ "$RELEASE_REFERENCE" =~ ^ghcr\.io/clavenar/clavenar-stack-release@sha256:[0-9a-f]{64}$ ]]
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          PKG="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          PKG="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)"
           if [ "$COMPONENT_VERSION" != "$PKG" ]; then
             echo "::error::protected component version does not match pyproject.toml '$PKG'"
             exit 1
