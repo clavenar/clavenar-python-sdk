@@ -195,7 +195,7 @@ are trusted.
 ## Install
 
 ```bash
-pip install clavenar-agent-sdk
+pip install clavenar-agent-sdk==1.5.0
 ```
 
 Python 3.10+. Runtime dep is `httpx` only; the `anthropic` and
