@@ -534,11 +534,28 @@ def _parse_inspect_response(response: httpx.Response) -> ClavenarVerdict:
                 raise ClavenarTransportError(
                     f"clavenar 200 with unparseable body: {error}", status=200
                 ) from error
-            if not isinstance(payload, dict) or payload != {"verdict": "allow"}:
+            legacy_allow = payload == {"verdict": "allow"}
+            contract_allow = (
+                isinstance(payload, dict)
+                and set(payload) == {"contract", "decision", "correlation_id", "executable"}
+                and payload.get("contract") == DECISION_CONTRACT
+                and payload.get("decision") == "allow"
+                and isinstance(payload.get("correlation_id"), str)
+                and bool(payload["correlation_id"])
+                and payload.get("executable") is False
+            )
+            if not legacy_allow and not contract_allow:
                 raise ClavenarTransportError(
                     f"clavenar 200 with unexpected body shape: {_safe_repr(payload)}",
                     status=200,
                 )
+            if contract_allow:
+                body_correlation_id = payload["correlation_id"]
+                if correlation_id and correlation_id != body_correlation_id:
+                    raise ClavenarTransportError(
+                        "clavenar 200 correlation id header/body mismatch", status=200
+                    )
+                correlation_id = correlation_id or body_correlation_id
         return _Allow(correlation_id=correlation_id)
 
     if response.status_code == 403:

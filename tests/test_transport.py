@@ -60,6 +60,48 @@ async def test_allow_returns_allow_with_correlation_id() -> None:
 
 
 @respx.mock
+async def test_exact_decision_allow_envelope() -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "contract": "clavenar.decision/v1",
+                "decision": "allow",
+                "correlation_id": "decision-correlation",
+                "executable": False,
+            },
+        )
+    )
+    verdict = await inspect_tool_use(
+        NormalizedToolCall(id="toolu_1", name="list", input={}),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
+    )
+    assert verdict.kind == "allow"
+    assert verdict.correlation_id == "decision-correlation"
+
+
+@respx.mock
+async def test_decision_allow_correlation_mismatch_fails_closed() -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "contract": "clavenar.decision/v1",
+                "decision": "allow",
+                "correlation_id": "body-correlation",
+                "executable": False,
+            },
+            headers={"x-clavenar-correlation-id": "header-correlation"},
+        )
+    )
+    with pytest.raises(ClavenarTransportError, match="correlation id header/body mismatch"):
+        await inspect_tool_use(
+            NormalizedToolCall(id="toolu_1", name="list", input={}),
+            ClavenarOptions(endpoint=FAKE_ENDPOINT),
+        )
+
+
+@respx.mock
 async def test_arbitrary_200_body_fails_closed() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
         return_value=httpx.Response(200, json={"verdict": "allow", "unexpected": True})
