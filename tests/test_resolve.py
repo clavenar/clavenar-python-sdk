@@ -108,6 +108,24 @@ async def test_resolve_propagates_terminal_404() -> None:
 
 
 @respx.mock
+async def test_resolve_propagates_malformed_success_response() -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(202, json=_pending_body()))
+    route = respx.get(f"{FAKE_ENDPOINT}/pending/corr-001").mock(
+        return_value=httpx.Response(200, json={"correlation_id": "corr-001"})
+    )
+    client = clavenar_wrap(
+        _anthropic(make_anthropic_message_with_tool_use()),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
+    )
+    with pytest.raises(ClavenarPending) as pending:
+        await client.messages.create(model="claude-x")
+    with pytest.raises(ClavenarTransportError) as error:
+        await pending.value.resolve(poll_interval_s=0.001, timeout_s=1.0)
+    assert error.value.status == 200
+    assert route.call_count == 1
+
+
+@respx.mock
 async def test_resolve_times_out() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(202, json=_pending_body()))
     respx.get(f"{FAKE_ENDPOINT}/pending/corr-001").mock(

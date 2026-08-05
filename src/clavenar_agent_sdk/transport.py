@@ -12,21 +12,42 @@ is the cleanest seam.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import json
+import math
 import random
 import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
+from urllib.parse import quote, urlparse
 
 import httpx
 
-from clavenar_agent_sdk.errors import ClavenarTransportError
+from clavenar_agent_sdk.errors import ClavenarConfigError, ClavenarTransportError
 from clavenar_agent_sdk.options import ClavenarOptions
 
 CORRELATION_HEADER = "x-clavenar-correlation-id"
 DECISION_CONTRACT = "clavenar.decision/v1"
 DECISION_CONTRACT_HEADER = "x-clavenar-decision-contract"
 IDEMPOTENCY_ID_HEADER = "x-clavenar-idempotency-id"
+
+MAX_RETRY_ATTEMPTS = 10
+MAX_RETRY_DELAY_S = 60.0
+MAX_TIMEOUT_S = 300.0
+MAX_RESPONSE_BYTES = 1024 * 1024
+MAX_ERROR_PREVIEW_BYTES = 4 * 1024
+MAX_TOOL_ARGUMENT_BYTES = 1024 * 1024
+MAX_BATCH_REQUEST_BYTES = 4 * 1024 * 1024
+MAX_IDENTIFIER_BYTES = 1024
+
+_RESERVED_HEADERS = {
+    "authorization",
+    "content-length",
+    "content-type",
+    DECISION_CONTRACT_HEADER,
+    IDEMPOTENCY_ID_HEADER,
+}
 
 
 @dataclass(frozen=True)
@@ -112,6 +133,8 @@ async def inspect_tool_use(
     either. Pass `client` to share a connection pool across many
     inspections; omit to mint a single-shot one.
     """
+    validate_transport_options(opts)
+    _validate_tool_call(tool_call)
     idempotency_id = str(uuid.uuid4())
     return await _inspect_decision(
         _inspect_body(tool_call, idempotency_id), idempotency_id, opts, client
@@ -125,6 +148,7 @@ async def inspect_tool_uses(
     client: httpx.AsyncClient | None = None,
 ) -> ClavenarVerdict:
     """Submit one ordered atomic decision for a complete provider turn."""
+    validate_transport_options(opts)
     idempotency_id = str(uuid.uuid4())
     return await _inspect_decision(
         _atomic_batch_body(tool_calls, idempotency_id), idempotency_id, opts, client
@@ -138,12 +162,11 @@ async def _inspect_decision(
     client: httpx.AsyncClient | None,
 ) -> ClavenarVerdict:
     retry = opts.retry
-    if retry.max_attempts < 1:
-        raise ClavenarTransportError(f"retry.max_attempts must be >= 1, got {retry.max_attempts}")
+    request_bytes = _serialize_request(body)
     last_err: ClavenarTransportError | None = None
     for attempt in range(retry.max_attempts):
         try:
-            return await _inspect_single_attempt(body, idempotency_id, opts, client)
+            return await _inspect_single_attempt(request_bytes, idempotency_id, opts, client)
         except ClavenarTransportError as e:
             last_err = e
             if not _is_retriable(e) or attempt == retry.max_attempts - 1:
@@ -153,7 +176,7 @@ async def _inspect_decision(
 
 
 async def _inspect_single_attempt(
-    body: dict[str, Any],
+    body: bytes,
     idempotency_id: str,
     opts: ClavenarOptions,
     client: httpx.AsyncClient | None,
@@ -166,20 +189,22 @@ async def _inspect_single_attempt(
     url = _join_url(opts.endpoint, "/mcp")
     owned: httpx.AsyncClient | None = None
     if client is None:
-        owned = (
-            opts.transport_profile.async_client()
-            if opts.transport_profile is not None
-            else httpx.AsyncClient(timeout=opts.timeout_s)
-        )
-        client = owned
+        if opts.transport_profile is not None:
+            client = opts.transport_profile.async_client()
+        else:
+            owned = httpx.AsyncClient(timeout=opts.timeout_s)
+            client = owned
     timeout_s = _request_timeout(opts)
     try:
-        try:
-            response = await client.post(url, json=body, headers=headers, timeout=timeout_s)
-        except httpx.TimeoutException as e:
-            raise ClavenarTransportError(f"clavenar inspect timed out after {timeout_s}s") from e
-        except httpx.HTTPError as e:
-            raise ClavenarTransportError(f"clavenar inspect failed: {e}") from e
+        response = await _request_bounded_async(
+            client,
+            "POST",
+            url,
+            headers=headers,
+            content=body,
+            timeout_s=timeout_s,
+            operation="inspect",
+        )
     finally:
         if owned is not None:
             await owned.aclose()
@@ -199,6 +224,8 @@ def inspect_tool_use_sync(
     Same retry semantics as the async path, with `time.sleep` between
     attempts. Pass `client` to share a connection pool.
     """
+    validate_transport_options(opts)
+    _validate_tool_call(tool_call)
     idempotency_id = str(uuid.uuid4())
     return _inspect_decision_sync(
         _inspect_body(tool_call, idempotency_id), idempotency_id, opts, client
@@ -212,6 +239,7 @@ def inspect_tool_uses_sync(
     client: httpx.Client | None = None,
 ) -> ClavenarVerdict:
     """Sync mirror of :func:`inspect_tool_uses`."""
+    validate_transport_options(opts)
     idempotency_id = str(uuid.uuid4())
     return _inspect_decision_sync(
         _atomic_batch_body(tool_calls, idempotency_id), idempotency_id, opts, client
@@ -225,12 +253,11 @@ def _inspect_decision_sync(
     client: httpx.Client | None,
 ) -> ClavenarVerdict:
     retry = opts.retry
-    if retry.max_attempts < 1:
-        raise ClavenarTransportError(f"retry.max_attempts must be >= 1, got {retry.max_attempts}")
+    request_bytes = _serialize_request(body)
     last_err: ClavenarTransportError | None = None
     for attempt in range(retry.max_attempts):
         try:
-            return _inspect_single_attempt_sync(body, idempotency_id, opts, client)
+            return _inspect_single_attempt_sync(request_bytes, idempotency_id, opts, client)
         except ClavenarTransportError as e:
             last_err = e
             if not _is_retriable(e) or attempt == retry.max_attempts - 1:
@@ -240,7 +267,7 @@ def _inspect_decision_sync(
 
 
 def _inspect_single_attempt_sync(
-    body: dict[str, Any],
+    body: bytes,
     idempotency_id: str,
     opts: ClavenarOptions,
     client: httpx.Client | None,
@@ -253,25 +280,176 @@ def _inspect_single_attempt_sync(
     url = _join_url(opts.endpoint, "/mcp")
     owned: httpx.Client | None = None
     if client is None:
-        owned = (
-            opts.transport_profile.client()
-            if opts.transport_profile is not None
-            else httpx.Client(timeout=opts.timeout_s)
-        )
-        client = owned
+        if opts.transport_profile is not None:
+            client = opts.transport_profile.client()
+        else:
+            owned = httpx.Client(timeout=opts.timeout_s)
+            client = owned
     timeout_s = _request_timeout(opts)
     try:
-        try:
-            response = client.post(url, json=body, headers=headers, timeout=timeout_s)
-        except httpx.TimeoutException as e:
-            raise ClavenarTransportError(f"clavenar inspect timed out after {timeout_s}s") from e
-        except httpx.HTTPError as e:
-            raise ClavenarTransportError(f"clavenar inspect failed: {e}") from e
+        response = _request_bounded_sync(
+            client,
+            "POST",
+            url,
+            headers=headers,
+            content=body,
+            timeout_s=timeout_s,
+            operation="inspect",
+        )
     finally:
         if owned is not None:
             owned.close()
 
     return _parse_inspect_response(response)
+
+
+async def _request_bounded_async(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str],
+    timeout_s: float,
+    operation: str,
+    content: bytes | None = None,
+) -> httpx.Response:
+    try:
+        async with client.stream(
+            method,
+            url,
+            headers=headers,
+            content=content,
+            timeout=timeout_s,
+        ) as response:
+            limit = _response_limit(response.status_code)
+            _reject_oversized_content_length(response, limit, operation)
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                body.extend(chunk)
+                if len(body) > limit:
+                    raise ClavenarTransportError(
+                        f"clavenar {operation}: response exceeded {limit} bytes",
+                        status=response.status_code,
+                    )
+            return httpx.Response(
+                response.status_code,
+                headers=response.headers,
+                content=bytes(body),
+                request=response.request,
+            )
+    except ClavenarTransportError:
+        raise
+    except httpx.TimeoutException as error:
+        raise ClavenarTransportError(
+            f"clavenar {operation} timed out after {timeout_s}s"
+        ) from error
+    except httpx.HTTPError as error:
+        raise ClavenarTransportError(f"clavenar {operation} failed: {error}") from error
+
+
+def _request_bounded_sync(
+    client: httpx.Client,
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str],
+    timeout_s: float,
+    operation: str,
+    content: bytes | None = None,
+) -> httpx.Response:
+    try:
+        with client.stream(
+            method,
+            url,
+            headers=headers,
+            content=content,
+            timeout=timeout_s,
+        ) as response:
+            limit = _response_limit(response.status_code)
+            _reject_oversized_content_length(response, limit, operation)
+            body = bytearray()
+            for chunk in response.iter_bytes():
+                body.extend(chunk)
+                if len(body) > limit:
+                    raise ClavenarTransportError(
+                        f"clavenar {operation}: response exceeded {limit} bytes",
+                        status=response.status_code,
+                    )
+            return httpx.Response(
+                response.status_code,
+                headers=response.headers,
+                content=bytes(body),
+                request=response.request,
+            )
+    except ClavenarTransportError:
+        raise
+    except httpx.TimeoutException as error:
+        raise ClavenarTransportError(
+            f"clavenar {operation} timed out after {timeout_s}s"
+        ) from error
+    except httpx.HTTPError as error:
+        raise ClavenarTransportError(f"clavenar {operation} failed: {error}") from error
+
+
+def _response_limit(status: int) -> int:
+    return MAX_RESPONSE_BYTES if status in {200, 202, 403, 429} else MAX_ERROR_PREVIEW_BYTES
+
+
+def _reject_oversized_content_length(response: httpx.Response, limit: int, operation: str) -> None:
+    value = response.headers.get("content-length")
+    if value is None:
+        return
+    try:
+        size = int(value)
+    except ValueError:
+        return
+    if size > limit:
+        raise ClavenarTransportError(
+            f"clavenar {operation}: response exceeded {limit} bytes",
+            status=response.status_code,
+        )
+
+
+def _serialize_request(body: dict[str, Any]) -> bytes:
+    try:
+        encoded = json.dumps(
+            body,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise ClavenarTransportError(
+            f"clavenar inspect request is not valid JSON: {error}"
+        ) from error
+    if len(encoded) > MAX_BATCH_REQUEST_BYTES:
+        raise ClavenarTransportError(
+            f"clavenar inspect request exceeded {MAX_BATCH_REQUEST_BYTES} bytes"
+        )
+    return encoded
+
+
+def _validate_tool_call(tool_call: NormalizedToolCall) -> None:
+    if not tool_call.id or not tool_call.name:
+        raise ClavenarTransportError("tool call requires non-empty id and name")
+    for label, value in (("id", tool_call.id), ("name", tool_call.name)):
+        if len(value.encode("utf-8")) > MAX_IDENTIFIER_BYTES:
+            raise ClavenarTransportError(f"tool call {label} exceeded {MAX_IDENTIFIER_BYTES} bytes")
+    try:
+        encoded = json.dumps(
+            tool_call.input,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise ClavenarTransportError(
+            f"tool call {tool_call.id} arguments are not valid JSON: {error}"
+        ) from error
+    if len(encoded) > MAX_TOOL_ARGUMENT_BYTES:
+        raise ClavenarTransportError(
+            f"tool call {tool_call.id} arguments exceeded {MAX_TOOL_ARGUMENT_BYTES} bytes"
+        )
 
 
 def _inspect_body(tool_call: NormalizedToolCall, idempotency_id: str) -> dict[str, Any]:
@@ -291,6 +469,8 @@ def _atomic_batch_body(tool_calls: list[NormalizedToolCall], idempotency_id: str
         raise ClavenarTransportError(
             "atomic decision batch requires unique non-empty call ids and names"
         )
+    for call in tool_calls:
+        _validate_tool_call(call)
     return {
         "jsonrpc": "2.0",
         "id": idempotency_id,
@@ -339,8 +519,26 @@ def _request_timeout(opts: ClavenarOptions) -> float:
 
 def _parse_inspect_response(response: httpx.Response) -> ClavenarVerdict:
     correlation_id = response.headers.get(CORRELATION_HEADER)
+    contract = response.headers.get(DECISION_CONTRACT_HEADER)
+    if contract is not None and contract != DECISION_CONTRACT:
+        raise ClavenarTransportError(
+            f"clavenar inspect: unsupported decision contract {contract!r}",
+            status=response.status_code,
+        )
 
     if response.status_code == 200:
+        if response.content.strip():
+            try:
+                payload = response.json()
+            except ValueError as error:
+                raise ClavenarTransportError(
+                    f"clavenar 200 with unparseable body: {error}", status=200
+                ) from error
+            if not isinstance(payload, dict) or payload != {"verdict": "allow"}:
+                raise ClavenarTransportError(
+                    f"clavenar 200 with unexpected body shape: {_safe_repr(payload)}",
+                    status=200,
+                )
         return _Allow(correlation_id=correlation_id)
 
     if response.status_code == 403:
@@ -356,7 +554,13 @@ def _parse_inspect_response(response: httpx.Response) -> ClavenarVerdict:
 
     if response.status_code == 202:
         payload = _parse_pending_body(response)
-        corr = correlation_id or payload["correlation_id"]
+        body_correlation_id = payload["correlation_id"]
+        if correlation_id and body_correlation_id and correlation_id != body_correlation_id:
+            raise ClavenarTransportError(
+                "clavenar 202 correlation id header/body mismatch",
+                status=202,
+            )
+        corr = correlation_id or body_correlation_id
         if not corr:
             raise ClavenarTransportError(
                 "clavenar 202 missing correlation id (header and body both empty)",
@@ -396,7 +600,7 @@ def _is_retriable(e: ClavenarTransportError) -> bool:
 
 def _backoff_s(base_s: float, attempt: int) -> float:
     # Exponential with full jitter: random in [base*2^attempt/2, base*2^attempt].
-    ceiling: float = base_s * (2**attempt)
+    ceiling: float = min(MAX_RETRY_DELAY_S, base_s * (2**attempt))
     return float(ceiling * (0.5 + random.random() * 0.5))
 
 
@@ -406,6 +610,8 @@ async def poll_pending_once(
     *,
     client: httpx.AsyncClient | None = None,
 ) -> ClavenarPendingView:
+    validate_transport_options(opts)
+    _validate_identifier(correlation_id, "pending correlation id")
     if client is not None and opts.transport_profile is not None:
         raise ClavenarTransportError(
             "transport_profile cannot be combined with an injected HTTP client"
@@ -423,29 +629,30 @@ async def poll_pending_once(
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    url = _join_url(opts.endpoint, f"/pending/{correlation_id}")
+    url = _join_url(opts.endpoint, f"/pending/{quote(correlation_id, safe='')}")
     owned: httpx.AsyncClient | None = None
     if client is None:
-        owned = (
-            opts.transport_profile.async_client()
-            if opts.transport_profile is not None
-            else httpx.AsyncClient(timeout=opts.timeout_s)
-        )
-        client = owned
+        if opts.transport_profile is not None:
+            client = opts.transport_profile.async_client()
+        else:
+            owned = httpx.AsyncClient(timeout=opts.timeout_s)
+            client = owned
     timeout_s = _request_timeout(opts)
     try:
-        try:
-            response = await client.get(url, headers=headers, timeout=timeout_s)
-        except httpx.TimeoutException as e:
-            raise ClavenarTransportError(f"clavenar poll timed out after {timeout_s}s") from e
-        except httpx.HTTPError as e:
-            raise ClavenarTransportError(f"clavenar poll failed: {e}") from e
+        response = await _request_bounded_async(
+            client,
+            "GET",
+            url,
+            headers=headers,
+            timeout_s=timeout_s,
+            operation="poll",
+        )
     finally:
         if owned is not None:
             await owned.aclose()
 
     if response.status_code == 200:
-        return _parse_pending_view(response)
+        return _parse_pending_view(response, correlation_id)
     text = _safe_text(response)
     raise ClavenarTransportError(
         f"clavenar poll: unexpected status {response.status_code}" + (f": {text}" if text else ""),
@@ -459,6 +666,8 @@ def poll_pending_once_sync(
     *,
     client: httpx.Client | None = None,
 ) -> ClavenarPendingView:
+    validate_transport_options(opts)
+    _validate_identifier(correlation_id, "pending correlation id")
     if client is not None and opts.transport_profile is not None:
         raise ClavenarTransportError(
             "transport_profile cannot be combined with an injected HTTP client"
@@ -469,29 +678,30 @@ def poll_pending_once_sync(
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    url = _join_url(opts.endpoint, f"/pending/{correlation_id}")
+    url = _join_url(opts.endpoint, f"/pending/{quote(correlation_id, safe='')}")
     owned: httpx.Client | None = None
     if client is None:
-        owned = (
-            opts.transport_profile.client()
-            if opts.transport_profile is not None
-            else httpx.Client(timeout=opts.timeout_s)
-        )
-        client = owned
+        if opts.transport_profile is not None:
+            client = opts.transport_profile.client()
+        else:
+            owned = httpx.Client(timeout=opts.timeout_s)
+            client = owned
     timeout_s = _request_timeout(opts)
     try:
-        try:
-            response = client.get(url, headers=headers, timeout=timeout_s)
-        except httpx.TimeoutException as e:
-            raise ClavenarTransportError(f"clavenar poll timed out after {timeout_s}s") from e
-        except httpx.HTTPError as e:
-            raise ClavenarTransportError(f"clavenar poll failed: {e}") from e
+        response = _request_bounded_sync(
+            client,
+            "GET",
+            url,
+            headers=headers,
+            timeout_s=timeout_s,
+            operation="poll",
+        )
     finally:
         if owned is not None:
             owned.close()
 
     if response.status_code == 200:
-        return _parse_pending_view(response)
+        return _parse_pending_view(response, correlation_id)
     text = _safe_text(response)
     raise ClavenarTransportError(
         f"clavenar poll: unexpected status {response.status_code}" + (f": {text}" if text else ""),
@@ -565,6 +775,8 @@ def _parse_rate_limit_body(response: httpx.Response) -> dict[str, Any]:
         "reasons": [s for s in reasons if isinstance(s, str)] if isinstance(reasons, list) else [],
         "retry_after_secs": body["retry_after_secs"]
         if isinstance(body.get("retry_after_secs"), int)
+        and not isinstance(body.get("retry_after_secs"), bool)
+        and body["retry_after_secs"] >= 0
         else None,
         "layer": body["layer"] if isinstance(body.get("layer"), str) else None,
         "correlation_id": body["correlation_id"]
@@ -573,7 +785,9 @@ def _parse_rate_limit_body(response: httpx.Response) -> dict[str, Any]:
     }
 
 
-def _parse_pending_view(response: httpx.Response) -> ClavenarPendingView:
+def _parse_pending_view(
+    response: httpx.Response, expected_correlation_id: str
+) -> ClavenarPendingView:
     try:
         body = response.json()
     except ValueError as e:
@@ -585,10 +799,33 @@ def _parse_pending_view(response: httpx.Response) -> ClavenarPendingView:
             f"clavenar poll with unexpected body shape: {body!r}",
             status=response.status_code,
         )
+    required_strings = ("correlation_id", "agent_id", "tool_type", "method", "requested_at")
+    if any(not isinstance(body.get(field), str) for field in required_strings) or not isinstance(
+        body.get("review_reasons"), list
+    ):
+        raise ClavenarTransportError(
+            f"clavenar poll with unexpected body shape: {_safe_repr(body)}",
+            status=response.status_code,
+        )
+    if body["correlation_id"] != expected_correlation_id:
+        raise ClavenarTransportError(
+            "clavenar poll returned a different correlation id",
+            status=response.status_code,
+        )
     decision = body.get("decision")
     if decision not in (None, "allow", "deny"):
         raise ClavenarTransportError(
             f"clavenar poll: unrecognized decision {decision!r}",
+            status=response.status_code,
+        )
+    if body.get("decided_at") is not None and not isinstance(body.get("decided_at"), str):
+        raise ClavenarTransportError(
+            "clavenar poll: decided_at must be a string or null",
+            status=response.status_code,
+        )
+    if body.get("decider_note") is not None and not isinstance(body.get("decider_note"), str):
+        raise ClavenarTransportError(
+            "clavenar poll: decider_note must be a string or null",
             status=response.status_code,
         )
     return ClavenarPendingView(
@@ -606,9 +843,97 @@ def _parse_pending_view(response: httpx.Response) -> ClavenarPendingView:
 
 def _safe_text(response: httpx.Response) -> str:
     try:
-        return response.text
+        return response.content[:MAX_ERROR_PREVIEW_BYTES].decode("utf-8", errors="replace")
     except Exception:
         return ""
+
+
+def _safe_repr(value: Any) -> str:
+    rendered = repr(value)
+    return rendered[:MAX_ERROR_PREVIEW_BYTES]
+
+
+def validate_transport_options(opts: ClavenarOptions) -> None:
+    """Validate the complete transport policy before any network I/O."""
+    if not isinstance(opts.endpoint, str) or not opts.endpoint:
+        raise ClavenarConfigError("clavenar endpoint is required")
+    try:
+        parsed = urlparse(opts.endpoint)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as error:
+        raise ClavenarConfigError(f"clavenar endpoint is invalid: {error}") from error
+    if parsed.scheme not in {"http", "https"} or hostname is None or port == 0:
+        raise ClavenarConfigError("clavenar endpoint must be an absolute HTTP or HTTPS URL")
+    if parsed.username is not None or parsed.password is not None:
+        raise ClavenarConfigError("clavenar endpoint must not contain credentials")
+    if parsed.query or parsed.fragment:
+        raise ClavenarConfigError("clavenar endpoint must not contain a query or fragment")
+
+    if opts.token is not None and opts.transport_profile is not None:
+        raise ClavenarConfigError(
+            "token cannot be combined with transport_profile token acquisition"
+        )
+    if opts.token is not None and (
+        not opts.token.strip() or "\r" in opts.token or "\n" in opts.token
+    ):
+        raise ClavenarConfigError("clavenar token must be non-empty and single-line")
+    has_credentials = opts.token is not None or opts.transport_profile is not None
+    if has_credentials and parsed.scheme != "https":
+        is_explicit_loopback = False
+        try:
+            address = ipaddress.ip_address(hostname)
+            is_explicit_loopback = address in {
+                ipaddress.ip_address("127.0.0.1"),
+                ipaddress.ip_address("::1"),
+            }
+        except ValueError:
+            pass
+        if not opts.allow_insecure_loopback or not is_explicit_loopback:
+            raise ClavenarConfigError(
+                "clavenar credentials require HTTPS; set allow_insecure_loopback only "
+                "for an explicit 127.0.0.1 or ::1 development endpoint"
+            )
+
+    if (
+        isinstance(opts.timeout_s, bool)
+        or not isinstance(opts.timeout_s, (int, float))
+        or not math.isfinite(opts.timeout_s)
+        or not 0 < opts.timeout_s <= MAX_TIMEOUT_S
+    ):
+        raise ClavenarConfigError(f"clavenar timeout_s must be finite and in (0, {MAX_TIMEOUT_S}]")
+    if (
+        isinstance(opts.retry.max_attempts, bool)
+        or not isinstance(opts.retry.max_attempts, int)
+        or not 1 <= opts.retry.max_attempts <= MAX_RETRY_ATTEMPTS
+    ):
+        raise ClavenarConfigError(f"retry.max_attempts must be in [1, {MAX_RETRY_ATTEMPTS}]")
+    if (
+        isinstance(opts.retry.base_delay_s, bool)
+        or not isinstance(opts.retry.base_delay_s, (int, float))
+        or not math.isfinite(opts.retry.base_delay_s)
+        or not 0 <= opts.retry.base_delay_s <= MAX_RETRY_DELAY_S
+    ):
+        raise ClavenarConfigError(
+            f"retry.base_delay_s must be finite and in [0, {MAX_RETRY_DELAY_S}]"
+        )
+    if opts.mode not in {"enforce", "observe"}:
+        raise ClavenarConfigError("clavenar mode must be 'enforce' or 'observe'")
+    for name, value in opts.extra_headers.items():
+        if not isinstance(name, str) or not isinstance(value, str):
+            raise ClavenarConfigError("extra header names and values must be strings")
+        lower_name = name.lower()
+        if not name or lower_name in _RESERVED_HEADERS:
+            raise ClavenarConfigError(f"extra header {name!r} is reserved or empty")
+        if any(char in name or char in value for char in ("\r", "\n")):
+            raise ClavenarConfigError("extra header names and values must be single-line")
+
+
+def _validate_identifier(value: str, label: str) -> None:
+    if not isinstance(value, str) or not value:
+        raise ClavenarConfigError(f"{label} must be non-empty")
+    if len(value.encode("utf-8")) > MAX_IDENTIFIER_BYTES:
+        raise ClavenarConfigError(f"{label} exceeded {MAX_IDENTIFIER_BYTES} bytes")
 
 
 def _join_url(base: str, path: str) -> str:

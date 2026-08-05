@@ -26,9 +26,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect as inspect_mod
-from collections.abc import AsyncIterable, Iterable
+from collections.abc import AsyncIterable, Callable, Iterable
 from typing import Any, Literal
-from urllib.parse import urlparse
 
 from clavenar_agent_sdk._anthropic import extract_tool_uses
 from clavenar_agent_sdk._openai import extract_tool_calls
@@ -53,10 +52,12 @@ from clavenar_agent_sdk.transport import (
     inspect_tool_uses_sync,
     poll_pending_once,
     poll_pending_once_sync,
+    validate_transport_options,
 )
 
 ClientKind = Literal["anthropic", "openai"]
 ClientMode = Literal["async", "sync"]
+_WRAPPED_MARKER = "__clavenar_agent_sdk_wrapped__"
 
 
 def clavenar_wrap(client: Any, opts: ClavenarOptions) -> Any:
@@ -68,15 +69,20 @@ def clavenar_wrap(client: Any, opts: ClavenarOptions) -> Any:
     equivalent and partners typically pass the wrapped client by
     reference into their agent framework.
     """
-    _validate_options(opts)
+    validate_transport_options(opts)
+    if getattr(client, _WRAPPED_MARKER, False) is True:
+        return client
     kind, mode = _detect_client(client)
     if kind == "anthropic" and mode == "async":
-        return _wrap_anthropic_async(client, opts)
-    if kind == "anthropic" and mode == "sync":
-        return _wrap_anthropic_sync(client, opts)
-    if kind == "openai" and mode == "async":
-        return _wrap_openai_async(client, opts)
-    return _wrap_openai_sync(client, opts)
+        wrapped = _wrap_anthropic_async(client, opts)
+    elif kind == "anthropic" and mode == "sync":
+        wrapped = _wrap_anthropic_sync(client, opts)
+    elif kind == "openai" and mode == "async":
+        wrapped = _wrap_openai_async(client, opts)
+    else:
+        wrapped = _wrap_openai_sync(client, opts)
+    setattr(wrapped, _WRAPPED_MARKER, True)
+    return wrapped
 
 
 def _detect_client(client: Any) -> tuple[ClientKind, ClientMode]:
@@ -134,7 +140,7 @@ def _wrap_anthropic_async(client: Any, opts: ClavenarOptions) -> Any:
         result = await _maybe_await(inner(*args, **kwargs))
         if kwargs.get("stream") is True or _is_async_iterable(result):
             return wrap_anthropic_stream(result, opts)
-        calls = extract_tool_uses(result)
+        calls = await _extract_calls_async(extract_tool_uses, result, opts, "Anthropic")
         await _inspect_all_async(calls, opts)
         return result
 
@@ -150,7 +156,7 @@ def _wrap_anthropic_sync(client: Any, opts: ClavenarOptions) -> Any:
         result = inner(*args, **kwargs)
         if kwargs.get("stream") is True or _is_iterable_non_message(result):
             return wrap_anthropic_stream_sync(result, opts)
-        calls = extract_tool_uses(result)
+        calls = _extract_calls_sync(extract_tool_uses, result, opts, "Anthropic")
         _inspect_all_sync(calls, opts)
         return result
 
@@ -166,7 +172,7 @@ def _wrap_openai_async(client: Any, opts: ClavenarOptions) -> Any:
         result = await _maybe_await(inner(*args, **kwargs))
         if kwargs.get("stream") is True or _is_async_iterable(result):
             return wrap_openai_chat_stream(result, opts)
-        calls = extract_tool_calls(result)
+        calls = await _extract_calls_async(extract_tool_calls, result, opts, "OpenAI")
         await _inspect_all_async(calls, opts)
         return result
 
@@ -182,13 +188,60 @@ def _wrap_openai_sync(client: Any, opts: ClavenarOptions) -> Any:
         result = inner(*args, **kwargs)
         if kwargs.get("stream") is True or _is_iterable_non_message(result):
             return wrap_openai_chat_stream_sync(result, opts)
-        calls = extract_tool_calls(result)
+        calls = _extract_calls_sync(extract_tool_calls, result, opts, "OpenAI")
         _inspect_all_sync(calls, opts)
         return result
 
     client.chat.completions.create = create_wrapped
     _guard_stream_helper(client.chat.completions, "chat.completions.stream()", opts)
     return client
+
+
+async def _extract_calls_async(
+    extractor: Callable[[Any], list[NormalizedToolCall]],
+    result: Any,
+    opts: ClavenarOptions,
+    provider: str,
+) -> list[NormalizedToolCall]:
+    try:
+        return extractor(result)
+    except ClavenarTransportError as error:
+        if opts.mode == "enforce":
+            raise
+        if opts.on_policy_error is not None:
+            context = ClavenarVerdictContext(
+                tool_name=f"<{provider.lower()}-response>",
+                tool_use_id="<unknown>",
+                tool_input=None,
+            )
+            await _maybe_await(opts.on_policy_error(error, context))
+        return []
+
+
+def _extract_calls_sync(
+    extractor: Callable[[Any], list[NormalizedToolCall]],
+    result: Any,
+    opts: ClavenarOptions,
+    provider: str,
+) -> list[NormalizedToolCall]:
+    try:
+        return extractor(result)
+    except ClavenarTransportError as error:
+        if opts.mode == "enforce":
+            raise
+        if opts.on_policy_error is not None:
+            context = ClavenarVerdictContext(
+                tool_name=f"<{provider.lower()}-response>",
+                tool_use_id="<unknown>",
+                tool_input=None,
+            )
+            output = opts.on_policy_error(error, context)
+            if asyncio.iscoroutine(output):
+                raise ClavenarConfigError(
+                    "on_policy_error returned a coroutine but the client is sync; "
+                    "use a sync callback for sync clients"
+                ) from error
+        return []
 
 
 async def _inspect_all_async(calls: list[NormalizedToolCall], opts: ClavenarOptions) -> None:
@@ -317,14 +370,14 @@ def _raise_for_verdict_sync(verdict: Any, call: NormalizedToolCall, opts: Claven
     if verdict.kind == "pending":
         corr = verdict.correlation_id
 
-        async def _poll(corr_id: str = corr) -> Any:
+        def _poll(corr_id: str = corr) -> Any:
             return poll_pending_once_sync(corr_id, opts)
 
         raise ClavenarPending(
             tool_name=call.name,
             correlation_id=verdict.correlation_id,
             review_reasons=verdict.review_reasons,
-            poll_once=_poll,
+            poll_once_sync=_poll,
         )
     if verdict.kind == "rate_limited":
         raise ClavenarRateLimited(
@@ -364,26 +417,4 @@ def _is_iterable_non_message(v: Any) -> bool:
 
 
 def _validate_options(opts: ClavenarOptions) -> None:
-    if not opts.endpoint:
-        raise ClavenarConfigError("clavenar_wrap: opts.endpoint is required")
-    parsed = urlparse(opts.endpoint)
-    if not parsed.scheme or not parsed.netloc:
-        raise ClavenarConfigError(
-            f"clavenar_wrap: opts.endpoint is not a valid URL: {opts.endpoint!r}"
-        )
-    if opts.timeout_s <= 0:
-        raise ClavenarConfigError(
-            f"clavenar_wrap: opts.timeout_s must be positive (got {opts.timeout_s})"
-        )
-    if opts.mode not in ("enforce", "observe"):
-        raise ClavenarConfigError(
-            f"clavenar_wrap: opts.mode must be 'enforce' or 'observe' (got {opts.mode!r})"
-        )
-    if opts.retry.max_attempts < 1:
-        raise ClavenarConfigError(
-            f"clavenar_wrap: opts.retry.max_attempts must be >= 1 (got {opts.retry.max_attempts})"
-        )
-    if opts.retry.base_delay_s < 0:
-        raise ClavenarConfigError(
-            f"clavenar_wrap: opts.retry.base_delay_s must be >= 0 (got {opts.retry.base_delay_s})"
-        )
+    validate_transport_options(opts)

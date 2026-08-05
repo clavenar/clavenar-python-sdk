@@ -8,7 +8,7 @@ import httpx
 import pytest
 import respx
 
-from clavenar_agent_sdk.errors import ClavenarTransportError
+from clavenar_agent_sdk.errors import ClavenarConfigError, ClavenarTransportError
 from clavenar_agent_sdk.options import ClavenarOptions
 from clavenar_agent_sdk.transport import (
     NormalizedToolCall,
@@ -46,7 +46,9 @@ async def test_decision_selector_and_atomic_batch() -> None:
 async def test_allow_returns_allow_with_correlation_id() -> None:
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
         return_value=httpx.Response(
-            200, json={"ok": True}, headers={"x-clavenar-correlation-id": "abc-123"}
+            200,
+            json={"verdict": "allow"},
+            headers={"x-clavenar-correlation-id": "abc-123"},
         )
     )
     verdict = await inspect_tool_use(
@@ -55,6 +57,19 @@ async def test_allow_returns_allow_with_correlation_id() -> None:
     )
     assert verdict.kind == "allow"
     assert verdict.correlation_id == "abc-123"
+
+
+@respx.mock
+async def test_arbitrary_200_body_fails_closed() -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(200, json={"verdict": "allow", "unexpected": True})
+    )
+    with pytest.raises(ClavenarTransportError) as error:
+        await inspect_tool_use(
+            NormalizedToolCall(id="toolu_1", name="list", input={}),
+            ClavenarOptions(endpoint=FAKE_ENDPOINT),
+        )
+    assert error.value.status == 200
 
 
 @respx.mock
@@ -140,6 +155,22 @@ async def test_pending_missing_correlation_id_raises() -> None:
         )
     )
     with pytest.raises(ClavenarTransportError, match="missing correlation id"):
+        await inspect_tool_use(
+            NormalizedToolCall(id="toolu_1", name="op", input={}),
+            ClavenarOptions(endpoint=FAKE_ENDPOINT),
+        )
+
+
+@respx.mock
+async def test_pending_header_body_correlation_mismatch_raises() -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(
+            202,
+            json={"status": "pending", "correlation_id": "body", "review_reasons": []},
+            headers={"x-clavenar-correlation-id": "header"},
+        )
+    )
+    with pytest.raises(ClavenarTransportError, match="mismatch"):
         await inspect_tool_use(
             NormalizedToolCall(id="toolu_1", name="op", input={}),
             ClavenarOptions(endpoint=FAKE_ENDPOINT),
@@ -250,10 +281,11 @@ async def test_500_raises_transport_error_with_status() -> None:
 
 @respx.mock
 async def test_authorization_header_includes_token() -> None:
-    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200))
+    endpoint = "https://clavenar-lite.test"
+    route = respx.post(f"{endpoint}/mcp").mock(return_value=httpx.Response(200))
     await inspect_tool_use(
         NormalizedToolCall(id="toolu_1", name="op", input={}),
-        ClavenarOptions(endpoint=FAKE_ENDPOINT, token="secret-123"),
+        ClavenarOptions(endpoint=endpoint, token="secret-123"),
     )
     assert route.calls.last.request.headers["authorization"] == "Bearer secret-123"
 
@@ -269,6 +301,25 @@ async def test_extra_headers_forwarded() -> None:
         ),
     )
     assert route.calls.last.request.headers["x-clavenar-demo-prefix"] == "abcd1234"
+
+
+async def test_reserved_extra_header_is_rejected_before_network() -> None:
+    with pytest.raises(ClavenarConfigError, match="reserved"):
+        await inspect_tool_use(
+            NormalizedToolCall(id="toolu_1", name="op", input={}),
+            ClavenarOptions(
+                endpoint=FAKE_ENDPOINT,
+                extra_headers={"Authorization": "attacker-controlled"},
+            ),
+        )
+
+
+async def test_credentials_require_https_outside_explicit_loopback() -> None:
+    with pytest.raises(ClavenarConfigError, match="require HTTPS"):
+        await inspect_tool_use(
+            NormalizedToolCall(id="toolu_1", name="op", input={}),
+            ClavenarOptions(endpoint=FAKE_ENDPOINT, token="secret"),
+        )
 
 
 @respx.mock

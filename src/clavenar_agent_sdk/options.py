@@ -67,6 +67,12 @@ class ClavenarOptions:
     endpoint: str
     token: str | None = None
     transport_profile: SecureTransportProfile | None = None
+    # Permit bearer credentials over cleartext HTTP only when the
+    # endpoint is an explicit loopback IP (127.0.0.1 or ::1). This is
+    # intended solely for local development; hostnames such as
+    # ``localhost`` are deliberately not trusted because they can be
+    # rebound or overridden.
+    allow_insecure_loopback: bool = False
     mode: ClavenarMode = "enforce"
     timeout_s: float = 10.0
     # DANGEROUS: allow the provider SDK's `.stream()` helper

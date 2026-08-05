@@ -27,6 +27,14 @@ class ClavenarTransportError(Exception):
         self.status = status
 
 
+class ClavenarRecoveryRequired(Exception):
+    """A persisted intent needs conclusive provider reconciliation."""
+
+    def __init__(self, idempotency_id: str) -> None:
+        super().__init__(f"clavenar execution {idempotency_id} requires provider reconciliation")
+        self.idempotency_id = idempotency_id
+
+
 class ClavenarDenied(Exception):
     """Raised when clavenar returns a 403 deny."""
 
@@ -72,7 +80,8 @@ class ClavenarPending(Exception):
         tool_name: str,
         correlation_id: str,
         review_reasons: list[str],
-        poll_once: Callable[[], Awaitable[ClavenarPendingView]],
+        poll_once: Callable[[], Awaitable[ClavenarPendingView]] | None = None,
+        poll_once_sync: Callable[[], ClavenarPendingView] | None = None,
     ) -> None:
         super().__init__(
             f"clavenar parked tool {tool_name!r} for review (correlation_id={correlation_id})"
@@ -81,6 +90,7 @@ class ClavenarPending(Exception):
         self.correlation_id = correlation_id
         self.review_reasons = review_reasons
         self._poll_once = poll_once
+        self._poll_once_sync = poll_once_sync
 
     async def resolve(
         self,
@@ -90,31 +100,36 @@ class ClavenarPending(Exception):
     ) -> None:
         """Block until an operator decides. Returns on allow; raises ClavenarDenied on deny.
 
-        Transient transport errors (5xx, network blips, and body-shape
-        mismatches — the latter carry the poll's 200 status) are
-        swallowed between polls. Only 401/404 are terminal and re-raise
-        immediately as ClavenarTransportError. The deadline is enforced
-        as a hard wall-clock ceiling.
+        Only transient transport errors (network failures and 5xx)
+        are swallowed between polls. Authentication/configuration
+        failures and malformed successful responses are terminal. The
+        deadline is enforced as a hard wall-clock ceiling.
         """
         import asyncio
+        import math
         import time
 
-        if poll_interval_s <= 0:
+        if not math.isfinite(poll_interval_s) or poll_interval_s <= 0:
             raise ClavenarTransportError(
                 f"ClavenarPending.resolve: poll_interval_s must be positive, got {poll_interval_s}"
             )
-        if timeout_s <= 0:
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
             raise ClavenarTransportError(
                 f"ClavenarPending.resolve: timeout_s must be positive, got {timeout_s}"
             )
 
         deadline = time.monotonic() + timeout_s
+        if self._poll_once is None:
+            raise ClavenarTransportError(
+                "ClavenarPending.resolve is unavailable for a synchronous client; "
+                "use resolve_sync()"
+            )
         while time.monotonic() < deadline:
             view: ClavenarPendingView | None = None
             try:
                 view = await self._poll_once()
             except ClavenarTransportError as e:
-                if e.status in (401, 404):
+                if e.status is not None and not 500 <= e.status < 600:
                     raise
 
             if view is not None and view.decision == "allow":
@@ -133,6 +148,60 @@ class ClavenarPending(Exception):
             if remaining <= 0:
                 break
             await asyncio.sleep(min(poll_interval_s, remaining))
+
+        raise ClavenarTransportError(
+            f"clavenar pending {self.correlation_id} not decided within {timeout_s}s"
+        )
+
+    def resolve_sync(
+        self,
+        *,
+        poll_interval_s: float = 2.0,
+        timeout_s: float = 600.0,
+    ) -> None:
+        """Synchronous mirror of :meth:`resolve` for sync provider clients."""
+        import math
+        import time
+
+        if not math.isfinite(poll_interval_s) or poll_interval_s <= 0:
+            raise ClavenarTransportError(
+                "ClavenarPending.resolve_sync: poll_interval_s must be positive and finite"
+            )
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ClavenarTransportError(
+                "ClavenarPending.resolve_sync: timeout_s must be positive and finite"
+            )
+        if self._poll_once_sync is None:
+            raise ClavenarTransportError(
+                "ClavenarPending.resolve_sync is unavailable for an asynchronous client; "
+                "await resolve()"
+            )
+
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            view: ClavenarPendingView | None = None
+            try:
+                view = self._poll_once_sync()
+            except ClavenarTransportError as error:
+                if error.status is not None and not 500 <= error.status < 600:
+                    raise
+
+            if view is not None and view.decision == "allow":
+                return
+            if view is not None and view.decision == "deny":
+                reasons = [view.decider_note] if view.decider_note else ["operator denied"]
+                raise ClavenarDenied(
+                    tool_name=self.tool_name,
+                    reasons=reasons,
+                    review_reasons=self.review_reasons,
+                    intent_category="PendingDenied",
+                    correlation_id=self.correlation_id,
+                )
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(poll_interval_s, remaining))
 
         raise ClavenarTransportError(
             f"clavenar pending {self.correlation_id} not decided within {timeout_s}s"

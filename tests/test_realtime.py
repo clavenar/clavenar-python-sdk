@@ -76,7 +76,7 @@ def test_normalize_falls_back_to_raw_string_on_invalid_json() -> None:
 
 @respx.mock
 async def test_inspect_returns_allow_on_200() -> None:
-    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200, json={}))
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200))
     verdict = await inspect_realtime_function_call(
         _done_event(),
         ClavenarOptions(endpoint=FAKE_ENDPOINT),
@@ -111,7 +111,7 @@ async def test_inspect_uses_stable_uuid_as_envelope_id() -> None:
 
     def _handler(request: httpx.Request) -> httpx.Response:
         captured.update(request.read() and {"body": request.read().decode()})
-        return httpx.Response(200, json={})
+        return httpx.Response(200)
 
     respx.post(f"{FAKE_ENDPOINT}/mcp").mock(side_effect=_handler)
     await inspect_realtime_function_call(

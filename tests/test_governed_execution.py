@@ -9,6 +9,7 @@ import respx
 from clavenar_agent_sdk.governed_execution import (
     AsyncGovernedExecutionOptions,
     ExecutionEffect,
+    ExecutionState,
     PreparedToolRequest,
     ToolExecutionRequest,
     execute_prepared_tool,
@@ -40,7 +41,9 @@ def _authorization() -> dict[str, Any]:
                 "method": "tools/call",
                 "params": {"name": PREPARED.name, "arguments": PREPARED.arguments},
             },
-            "payload_sha256": "sha256:" + "2" * 64,
+            "payload_sha256": (
+                "sha256:269123e546c75ec2df26ce4a52baeab92e58afdfabcb111c3e9069a37f78f1c5"
+            ),
             "decision_principal": {"subject": "system:policy-brain"},
             "modification_diff": None,
             "policy_bundle": {"schema_version": 1},
@@ -64,6 +67,9 @@ class Store:
             raise RuntimeError("store unavailable")
         self.intent = intent
 
+    async def load_execution(self, _idempotency_id: str) -> ExecutionState:
+        return ExecutionState(intent=self.intent, completion=self.completion)
+
     async def commit_completion_and_enqueue_receipt(self, completion: dict[str, Any]) -> None:
         self.order.append("completion")
         self.completion = completion
@@ -82,7 +88,8 @@ async def test_governed_execution_orders_intent_effect_completion() -> None:
         assert request.idempotency_id == PREPARED.idempotency_id
         return ExecutionEffect(result={"ok": True}, effect_id="provider-operation-123")
 
-    async def signer(_: dict[str, Any]) -> dict[str, str]:
+    async def signer(unsigned: dict[str, Any]) -> dict[str, str]:
+        unsigned["authorization_id"] = "mutated-by-signer"
         return {
             "algorithm": "ES256",
             "credential_fingerprint": "sha256:" + "1" * 64,
@@ -96,11 +103,18 @@ async def test_governed_execution_orders_intent_effect_completion() -> None:
             executor_id="payments-provider",
             executor=executor,
             durable_store=store,
+            verify_authorization=lambda signed: signed["authorization"].update(
+                {"tool_name": "mutated-by-verifier"}
+            ),
             sign_receipt=signer,
         ),
     )
     assert order == ["intent", "effect", "completion"]
     assert result.result == {"ok": True}
+    assert (
+        result.receipt["authorization_id"] == _authorization()["authorization"]["authorization_id"]
+    )
+    assert result.receipt["authorization"]["authorization"]["tool_name"] == PREPARED.name
     assert store.completion is not None
     assert store.completion["actual_result_sha256"] == (
         "sha256:4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93"
@@ -131,6 +145,7 @@ async def test_intent_failure_invokes_no_executor() -> None:
                 executor_id="payments-provider",
                 executor=executor,
                 durable_store=Store([], fail_intent=True),
+                verify_authorization=lambda _signed: None,
                 sign_receipt=signer,
             ),
         )
@@ -160,6 +175,7 @@ async def test_executor_failure_is_never_retried() -> None:
                 executor_id="payments-provider",
                 executor=executor,
                 durable_store=Store([]),
+                verify_authorization=lambda _signed: None,
                 sign_receipt=signer,
                 max_attempts=3,
                 base_delay_s=0.001,
@@ -167,3 +183,125 @@ async def test_executor_failure_is_never_retried() -> None:
         )
     assert route.call_count == 1
     assert calls == 1
+
+
+@respx.mock
+async def test_signature_verification_fails_before_intent() -> None:
+    respx.post(f"{ENDPOINT}/mcp").mock(return_value=httpx.Response(200, json=_authorization()))
+    store = Store([])
+    called = False
+
+    async def executor(_: ToolExecutionRequest) -> ExecutionEffect:
+        nonlocal called
+        called = True
+        return ExecutionEffect({}, "unexpected")
+
+    def verifier(_: dict[str, Any]) -> None:
+        raise RuntimeError("unknown identity key")
+
+    async def signer(_: dict[str, Any]) -> dict[str, str]:
+        raise AssertionError("signer must not run")
+
+    with pytest.raises(Exception, match="authorization signature verification failed"):
+        await execute_prepared_tool(
+            PREPARED,
+            AsyncGovernedExecutionOptions(
+                endpoint=ENDPOINT,
+                executor_id="payments-provider",
+                executor=executor,
+                durable_store=store,
+                verify_authorization=verifier,
+                sign_receipt=signer,
+            ),
+        )
+    assert store.intent is None
+    assert not called
+
+
+async def test_persisted_intent_never_replays_without_conclusive_recovery() -> None:
+    signed = _authorization()
+    auth = signed["authorization"]
+    store = Store([])
+    store.intent = {
+        "contract": "clavenar.sdk-durable-intent-outbox/v1",
+        "stage": "execution.intent",
+        "authorization_id": auth["authorization_id"],
+        "idempotency_id": auth["idempotency_id"],
+        "tenant": auth["tenant"],
+        "workload_id": auth["agent_id"],
+        "workload_spiffe": auth["agent_spiffe"],
+        "payload_sha256": auth["payload_sha256"],
+        "executor_id": "payments-provider",
+        "authorization": signed,
+    }
+    called = False
+
+    async def executor(_: ToolExecutionRequest) -> ExecutionEffect:
+        nonlocal called
+        called = True
+        return ExecutionEffect({}, "unexpected")
+
+    async def signer(_: dict[str, Any]) -> dict[str, str]:
+        raise AssertionError("signer must not run")
+
+    from clavenar_agent_sdk import ClavenarRecoveryRequired
+
+    with pytest.raises(ClavenarRecoveryRequired):
+        await execute_prepared_tool(
+            PREPARED,
+            AsyncGovernedExecutionOptions(
+                endpoint=ENDPOINT,
+                executor_id="payments-provider",
+                executor=executor,
+                durable_store=store,
+                verify_authorization=lambda _signed: None,
+                sign_receipt=signer,
+            ),
+        )
+    assert not called
+
+
+async def test_recoverer_finalizes_without_replaying_executor() -> None:
+    signed = _authorization()
+    auth = signed["authorization"]
+    store = Store([])
+    store.intent = {
+        "contract": "clavenar.sdk-durable-intent-outbox/v1",
+        "stage": "execution.intent",
+        "authorization_id": auth["authorization_id"],
+        "idempotency_id": auth["idempotency_id"],
+        "tenant": auth["tenant"],
+        "workload_id": auth["agent_id"],
+        "workload_spiffe": auth["agent_spiffe"],
+        "payload_sha256": auth["payload_sha256"],
+        "executor_id": "payments-provider",
+        "authorization": signed,
+    }
+
+    async def executor(_: ToolExecutionRequest) -> ExecutionEffect:
+        raise AssertionError("executor must not replay")
+
+    async def recover(_: dict[str, Any]) -> ExecutionEffect:
+        return ExecutionEffect({"ok": True}, "provider-operation-123")
+
+    async def signer(_: dict[str, Any]) -> dict[str, str]:
+        return {
+            "algorithm": "ES256",
+            "credential_fingerprint": auth["credential_fingerprint"],
+            "value": "signed",
+        }
+
+    outcome = await execute_prepared_tool(
+        PREPARED,
+        AsyncGovernedExecutionOptions(
+            endpoint=ENDPOINT,
+            executor_id="payments-provider",
+            executor=executor,
+            recover_effect=recover,
+            durable_store=store,
+            verify_authorization=lambda _signed: None,
+            sign_receipt=signer,
+        ),
+    )
+    assert outcome.effect_id == "provider-operation-123"
+    assert store.completion is not None

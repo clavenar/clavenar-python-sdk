@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from clavenar_agent_sdk.errors import ClavenarTransportError
 from clavenar_agent_sdk.transport import NormalizedToolCall
 
 
@@ -16,9 +17,9 @@ def extract_tool_uses(result: Any) -> list[NormalizedToolCall]:
     """Walk `result.content[]` for `tool_use` blocks. Returns [] if the
     response has no tool_use (text-only completion).
     """
-    content = _get(result, "content", default=[])
+    content = _get(result, "content")
     if not isinstance(content, list):
-        return []
+        raise ClavenarTransportError("Anthropic response is missing its content list")
     out: list[NormalizedToolCall] = []
     for block in content:
         if _block_type(block) != "tool_use":
@@ -26,9 +27,18 @@ def extract_tool_uses(result: Any) -> list[NormalizedToolCall]:
         block_id = _get(block, "id")
         block_name = _get(block, "name")
         block_input = _get(block, "input")
-        if not isinstance(block_id, str) or not isinstance(block_name, str):
-            continue
+        if (
+            not isinstance(block_id, str)
+            or not block_id
+            or not isinstance(block_name, str)
+            or not block_name
+        ):
+            raise ClavenarTransportError("Anthropic tool_use block is missing a valid id or name")
         out.append(NormalizedToolCall(id=block_id, name=block_name, input=block_input))
+    if _get(result, "stop_reason") == "tool_use" and not out:
+        raise ClavenarTransportError(
+            "Anthropic response declared tool_use but contained no valid tool_use block"
+        )
     return out
 
 

@@ -34,6 +34,8 @@ from clavenar_agent_sdk.errors import (
 )
 from clavenar_agent_sdk.options import ClavenarOptions, ClavenarVerdictContext
 from clavenar_agent_sdk.transport import (
+    MAX_BATCH_REQUEST_BYTES,
+    MAX_TOOL_ARGUMENT_BYTES,
     NormalizedToolCall,
     inspect_tool_use,
     inspect_tool_use_sync,
@@ -43,12 +45,15 @@ from clavenar_agent_sdk.transport import (
     poll_pending_once_sync,
 )
 
+MAX_STREAM_BUFFERS = 128
+
 
 @dataclass
 class _ToolBuf:
     id: str | None = None
     name: str | None = None
     args_buf: str = ""
+    args_bytes: int = 0
 
 
 @dataclass
@@ -65,6 +70,7 @@ async def wrap_anthropic_stream(
     before yielding; a denied call raises mid-iteration.
     """
     bufs: dict[int, _ToolBuf] = {}
+    ignored: set[int] = set()
     enforce = opts.mode == "enforce"
 
     async for event in upstream:
@@ -72,11 +78,41 @@ async def wrap_anthropic_stream(
         if kind == "content_block_start" and _anthropic_is_tool_use_block(event):
             block = _evt(event, "content_block")
             idx = _evt(event, "index")
-            if isinstance(idx, int):
-                bufs[idx] = _ToolBuf(
-                    id=_evt(block, "id"),
-                    name=_evt(block, "name"),
+            tool_id = _evt(block, "id")
+            tool_name = _evt(block, "name")
+            if (
+                isinstance(idx, int)
+                and not isinstance(idx, bool)
+                and idx >= 0
+                and isinstance(tool_id, str)
+                and bool(tool_id)
+                and isinstance(tool_name, str)
+                and bool(tool_name)
+            ):
+                if idx in bufs or len(bufs) >= MAX_STREAM_BUFFERS:
+                    bufs.pop(idx, None)
+                    ignored.add(idx)
+                    await _handle_stream_shape_error(
+                        ClavenarTransportError(
+                            "Anthropic stream opened a duplicate or excess tool-use buffer"
+                        ),
+                        opts,
+                        enforce,
+                        "Anthropic",
+                    )
+                else:
+                    bufs[idx] = _ToolBuf(id=tool_id, name=tool_name)
+            else:
+                await _handle_stream_shape_error(
+                    ClavenarTransportError(
+                        "Anthropic stream tool_use start is missing a valid index, id, or name"
+                    ),
+                    opts,
+                    enforce,
+                    "Anthropic",
                 )
+                if isinstance(idx, int):
+                    ignored.add(idx)
             yield event
             continue
         if kind == "content_block_delta":
@@ -86,20 +122,44 @@ async def wrap_anthropic_stream(
             if buf is not None and _evt(delta, "type") == "input_json_delta":
                 partial = _evt(delta, "partial_json")
                 if isinstance(partial, str):
-                    buf.args_buf += partial
+                    try:
+                        _append_args(buf, partial, sum(item.args_bytes for item in bufs.values()))
+                    except ClavenarTransportError as error:
+                        await _handle_stream_shape_error(error, opts, enforce, "Anthropic")
+                        if isinstance(idx, int):
+                            bufs.pop(idx, None)
+                            ignored.add(idx)
             yield event
             continue
         if kind == "content_block_stop":
             idx = _evt(event, "index")
+            if isinstance(idx, int) and idx in ignored:
+                ignored.remove(idx)
+                yield event
+                continue
             buf = bufs.pop(idx, None) if isinstance(idx, int) else None
             if buf is None:
                 yield event
                 continue
-            call = _buf_to_call(buf, "Anthropic tool_use")
+            try:
+                call = _buf_to_call(buf, "Anthropic tool_use")
+            except ClavenarTransportError as error:
+                await _handle_stream_shape_error(error, opts, enforce, "Anthropic")
+                yield event
+                continue
             await _inspect_and_maybe_raise(call, opts, enforce)
             yield event
             continue
         yield event
+    if bufs:
+        await _handle_stream_shape_error(
+            ClavenarTransportError(
+                "Anthropic stream ended before an open tool_use block was closed"
+            ),
+            opts,
+            enforce,
+            "Anthropic",
+        )
 
 
 def wrap_anthropic_stream_sync(
@@ -110,6 +170,7 @@ def wrap_anthropic_stream_sync(
     `ClavenarDenied` / `ClavenarPending` mid-iteration on enforce deny.
     """
     bufs: dict[int, _ToolBuf] = {}
+    ignored: set[int] = set()
     enforce = opts.mode == "enforce"
 
     for event in upstream:
@@ -117,11 +178,41 @@ def wrap_anthropic_stream_sync(
         if kind == "content_block_start" and _anthropic_is_tool_use_block(event):
             block = _evt(event, "content_block")
             idx = _evt(event, "index")
-            if isinstance(idx, int):
-                bufs[idx] = _ToolBuf(
-                    id=_evt(block, "id"),
-                    name=_evt(block, "name"),
+            tool_id = _evt(block, "id")
+            tool_name = _evt(block, "name")
+            if (
+                isinstance(idx, int)
+                and not isinstance(idx, bool)
+                and idx >= 0
+                and isinstance(tool_id, str)
+                and bool(tool_id)
+                and isinstance(tool_name, str)
+                and bool(tool_name)
+            ):
+                if idx in bufs or len(bufs) >= MAX_STREAM_BUFFERS:
+                    bufs.pop(idx, None)
+                    ignored.add(idx)
+                    _handle_stream_shape_error_sync(
+                        ClavenarTransportError(
+                            "Anthropic stream opened a duplicate or excess tool-use buffer"
+                        ),
+                        opts,
+                        enforce,
+                        "Anthropic",
+                    )
+                else:
+                    bufs[idx] = _ToolBuf(id=tool_id, name=tool_name)
+            else:
+                _handle_stream_shape_error_sync(
+                    ClavenarTransportError(
+                        "Anthropic stream tool_use start is missing a valid index, id, or name"
+                    ),
+                    opts,
+                    enforce,
+                    "Anthropic",
                 )
+                if isinstance(idx, int):
+                    ignored.add(idx)
             yield event
             continue
         if kind == "content_block_delta":
@@ -131,20 +222,44 @@ def wrap_anthropic_stream_sync(
             if buf is not None and _evt(delta, "type") == "input_json_delta":
                 partial = _evt(delta, "partial_json")
                 if isinstance(partial, str):
-                    buf.args_buf += partial
+                    try:
+                        _append_args(buf, partial, sum(item.args_bytes for item in bufs.values()))
+                    except ClavenarTransportError as error:
+                        _handle_stream_shape_error_sync(error, opts, enforce, "Anthropic")
+                        if isinstance(idx, int):
+                            bufs.pop(idx, None)
+                            ignored.add(idx)
             yield event
             continue
         if kind == "content_block_stop":
             idx = _evt(event, "index")
+            if isinstance(idx, int) and idx in ignored:
+                ignored.remove(idx)
+                yield event
+                continue
             buf = bufs.pop(idx, None) if isinstance(idx, int) else None
             if buf is None:
                 yield event
                 continue
-            call = _buf_to_call(buf, "Anthropic tool_use")
+            try:
+                call = _buf_to_call(buf, "Anthropic tool_use")
+            except ClavenarTransportError as error:
+                _handle_stream_shape_error_sync(error, opts, enforce, "Anthropic")
+                yield event
+                continue
             _inspect_and_maybe_raise_sync(call, opts, enforce)
             yield event
             continue
         yield event
+    if bufs:
+        _handle_stream_shape_error_sync(
+            ClavenarTransportError(
+                "Anthropic stream ended before an open tool_use block was closed"
+            ),
+            opts,
+            enforce,
+            "Anthropic",
+        )
 
 
 async def wrap_openai_chat_stream(
@@ -158,26 +273,65 @@ async def wrap_openai_chat_stream(
     yielded.
     """
     bufs: dict[int, _ChoiceBufs] = {}
+    ignored: set[int] = set()
     enforce = opts.mode == "enforce"
 
     async for chunk in upstream:
-        choices = _evt(chunk, "choices") or []
+        choices = _evt(chunk, "choices")
+        if not isinstance(choices, list):
+            await _handle_stream_shape_error(
+                ClavenarTransportError("OpenAI stream choices is not a list"),
+                opts,
+                enforce,
+                "OpenAI",
+            )
+            yield chunk
+            continue
         to_inspect: list[int] = []
         for choice in choices:
             choice_idx = _evt(choice, "index")
-            if not isinstance(choice_idx, int):
+            if not isinstance(choice_idx, int) or isinstance(choice_idx, bool) or choice_idx < 0:
+                await _handle_stream_shape_error(
+                    ClavenarTransportError("OpenAI stream choice has an invalid index"),
+                    opts,
+                    enforce,
+                    "OpenAI",
+                )
                 continue
             delta = _evt(choice, "delta")
             deltas = _evt(delta, "tool_calls") if delta is not None else None
             if isinstance(deltas, list):
                 for d in deltas:
-                    _accumulate_openai(bufs, choice_idx, d)
+                    if choice_idx in ignored:
+                        continue
+                    try:
+                        _accumulate_openai(bufs, choice_idx, d)
+                    except ClavenarTransportError as error:
+                        bufs.pop(choice_idx, None)
+                        ignored.add(choice_idx)
+                        await _handle_stream_shape_error(error, opts, enforce, "OpenAI")
             if _evt(choice, "finish_reason") == "tool_calls":
                 to_inspect.append(choice_idx)
         for choice_idx in to_inspect:
-            calls = _drain_openai_choice(bufs, choice_idx)
+            if choice_idx in ignored:
+                ignored.remove(choice_idx)
+                continue
+            try:
+                calls = _drain_openai_choice(bufs, choice_idx)
+            except ClavenarTransportError as error:
+                await _handle_stream_shape_error(error, opts, enforce, "OpenAI")
+                continue
             await _inspect_choice_batch(calls, opts, enforce)
         yield chunk
+    if any(choice.by_index for choice in bufs.values()):
+        await _handle_stream_shape_error(
+            ClavenarTransportError(
+                "OpenAI stream ended before buffered tool calls reached a terminal chunk"
+            ),
+            opts,
+            enforce,
+            "OpenAI",
+        )
 
 
 def wrap_openai_chat_stream_sync(
@@ -186,33 +340,74 @@ def wrap_openai_chat_stream_sync(
 ) -> Iterator[Any]:
     """Sync mirror of `wrap_openai_chat_stream`."""
     bufs: dict[int, _ChoiceBufs] = {}
+    ignored: set[int] = set()
     enforce = opts.mode == "enforce"
 
     for chunk in upstream:
-        choices = _evt(chunk, "choices") or []
+        choices = _evt(chunk, "choices")
+        if not isinstance(choices, list):
+            _handle_stream_shape_error_sync(
+                ClavenarTransportError("OpenAI stream choices is not a list"),
+                opts,
+                enforce,
+                "OpenAI",
+            )
+            yield chunk
+            continue
         to_inspect: list[int] = []
         for choice in choices:
             choice_idx = _evt(choice, "index")
-            if not isinstance(choice_idx, int):
+            if not isinstance(choice_idx, int) or isinstance(choice_idx, bool) or choice_idx < 0:
+                _handle_stream_shape_error_sync(
+                    ClavenarTransportError("OpenAI stream choice has an invalid index"),
+                    opts,
+                    enforce,
+                    "OpenAI",
+                )
                 continue
             delta = _evt(choice, "delta")
             deltas = _evt(delta, "tool_calls") if delta is not None else None
             if isinstance(deltas, list):
                 for d in deltas:
-                    _accumulate_openai(bufs, choice_idx, d)
+                    if choice_idx in ignored:
+                        continue
+                    try:
+                        _accumulate_openai(bufs, choice_idx, d)
+                    except ClavenarTransportError as error:
+                        bufs.pop(choice_idx, None)
+                        ignored.add(choice_idx)
+                        _handle_stream_shape_error_sync(error, opts, enforce, "OpenAI")
             if _evt(choice, "finish_reason") == "tool_calls":
                 to_inspect.append(choice_idx)
         for choice_idx in to_inspect:
-            calls = _drain_openai_choice(bufs, choice_idx)
+            if choice_idx in ignored:
+                ignored.remove(choice_idx)
+                continue
+            try:
+                calls = _drain_openai_choice(bufs, choice_idx)
+            except ClavenarTransportError as error:
+                _handle_stream_shape_error_sync(error, opts, enforce, "OpenAI")
+                continue
             _inspect_choice_batch_sync(calls, opts, enforce)
         yield chunk
+    if any(choice.by_index for choice in bufs.values()):
+        _handle_stream_shape_error_sync(
+            ClavenarTransportError(
+                "OpenAI stream ended before buffered tool calls reached a terminal chunk"
+            ),
+            opts,
+            enforce,
+            "OpenAI",
+        )
 
 
 def _accumulate_openai(bufs: dict[int, _ChoiceBufs], choice_idx: int, d: Any) -> None:
     cb = bufs.setdefault(choice_idx, _ChoiceBufs())
-    tool_idx = _evt(d, "index", default=0)
-    if not isinstance(tool_idx, int):
-        return
+    tool_idx = _evt(d, "index")
+    if not isinstance(tool_idx, int) or isinstance(tool_idx, bool) or tool_idx < 0:
+        raise ClavenarTransportError("OpenAI stream tool_call delta has an invalid index")
+    if tool_idx not in cb.by_index and sum(len(choice.by_index) for choice in bufs.values()) >= 128:
+        raise ClavenarTransportError("OpenAI stream has more than 128 open tool-call buffers")
     buf = cb.by_index.setdefault(tool_idx, _ToolBuf())
     d_id = _evt(d, "id")
     if isinstance(d_id, str):
@@ -224,17 +419,19 @@ def _accumulate_openai(bufs: dict[int, _ChoiceBufs], choice_idx: int, d: Any) ->
             buf.name = d_name
         d_args = _evt(fn, "arguments")
         if isinstance(d_args, str):
-            buf.args_buf += d_args
+            _append_args(buf, d_args, _total_openai_bytes(bufs))
 
 
 def _drain_openai_choice(bufs: dict[int, _ChoiceBufs], choice_idx: int) -> list[NormalizedToolCall]:
     cb = bufs.pop(choice_idx, None)
-    if cb is None:
-        return []
+    if cb is None or not cb.by_index:
+        raise ClavenarTransportError(
+            "OpenAI stream finished with finish_reason='tool_calls' without tool buffers"
+        )
     out: list[NormalizedToolCall] = []
     for tool_idx, buf in cb.by_index.items():
         if buf.id is None or buf.name is None:
-            raise ClavenarConfigError(
+            raise ClavenarTransportError(
                 "OpenAI stream chunk finished with finish_reason='tool_calls' "
                 f"but tool_call buffer (choice {choice_idx}, tool {tool_idx}) "
                 "is missing id or name"
@@ -245,17 +442,67 @@ def _drain_openai_choice(bufs: dict[int, _ChoiceBufs], choice_idx: int) -> list[
 
 def _buf_to_call(buf: _ToolBuf, label: str) -> NormalizedToolCall:
     if buf.id is None or buf.name is None:
-        raise ClavenarConfigError(f"{label} buffer missing id or name at close")
+        raise ClavenarTransportError(f"{label} buffer missing id or name at close")
     if buf.args_buf == "":
         parsed: Any = {}
     else:
         try:
             parsed = json.loads(buf.args_buf)
         except json.JSONDecodeError as e:
-            raise ClavenarConfigError(
+            raise ClavenarTransportError(
                 f"{label} {buf.id} ({buf.name}) streamed unparseable arguments: {e}"
             ) from e
     return NormalizedToolCall(id=buf.id, name=buf.name, input=parsed)
+
+
+def _append_args(buf: _ToolBuf, chunk: str, total_before: int) -> None:
+    chunk_bytes = len(chunk.encode("utf-8"))
+    if buf.args_bytes + chunk_bytes > MAX_TOOL_ARGUMENT_BYTES:
+        raise ClavenarTransportError(
+            f"streamed tool arguments exceeded {MAX_TOOL_ARGUMENT_BYTES} bytes"
+        )
+    if total_before + chunk_bytes > MAX_BATCH_REQUEST_BYTES:
+        raise ClavenarTransportError(
+            f"streamed tool-call batch exceeded {MAX_BATCH_REQUEST_BYTES} bytes"
+        )
+    buf.args_buf += chunk
+    buf.args_bytes += chunk_bytes
+
+
+def _total_openai_bytes(bufs: dict[int, _ChoiceBufs]) -> int:
+    return sum(tool.args_bytes for choice in bufs.values() for tool in choice.by_index.values())
+
+
+async def _handle_stream_shape_error(
+    error: ClavenarTransportError,
+    opts: ClavenarOptions,
+    enforce: bool,
+    provider: str,
+) -> None:
+    if enforce:
+        raise error
+    call = NormalizedToolCall(
+        id="<unknown>",
+        name=f"<{provider.lower()}-stream>",
+        input=None,
+    )
+    await _fire_policy_error(error, call, opts)
+
+
+def _handle_stream_shape_error_sync(
+    error: ClavenarTransportError,
+    opts: ClavenarOptions,
+    enforce: bool,
+    provider: str,
+) -> None:
+    if enforce:
+        raise error
+    call = NormalizedToolCall(
+        id="<unknown>",
+        name=f"<{provider.lower()}-stream>",
+        input=None,
+    )
+    _fire_policy_error_sync(error, call, opts)
 
 
 def _anthropic_is_tool_use_block(event: Any) -> bool:
@@ -438,15 +685,14 @@ def _process_verdict_sync(
     if verdict.kind == "pending":
         corr = verdict.correlation_id
 
-        # Sync clients won't await; expose the sync poller.
-        async def _poll_async(corr_id: str = corr) -> Any:
+        def _poll_sync(corr_id: str = corr) -> Any:
             return poll_pending_once_sync(corr_id, opts)
 
         raise ClavenarPending(
             tool_name=call.name,
             correlation_id=verdict.correlation_id,
             review_reasons=verdict.review_reasons,
-            poll_once=_poll_async,
+            poll_once_sync=_poll_sync,
         )
     if verdict.kind == "rate_limited":
         raise ClavenarRateLimited(

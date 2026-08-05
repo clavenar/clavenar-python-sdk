@@ -4,6 +4,31 @@ All notable changes to `clavenar-agent-sdk` (Python) are recorded here.
 
 ## Unreleased
 
+## 1.5.1 — 2026-08-05
+
+### Added
+
+- Recoverable async and sync governed execution now loads durable state before
+  authorization, cryptographically verifies every new or stored authorization,
+  restores a completed outcome, and reconciles an ambiguous provider effect
+  without blindly executing it again. `ClavenarRecoveryRequired` identifies
+  intents whose effect cannot yet be reconciled.
+- `ClavenarPending.resolve_sync()` gives sync wrappers the same pending-review
+  path as async wrappers. Secure transport profiles expose explicit async and
+  sync reload/close lifecycle methods for their cached clients.
+
+### Changed
+
+- Provider shape drift, malformed terminal stream events, and malformed success
+  bodies fail closed in enforce mode while observe mode reports the error and
+  passes the provider response through.
+- Requests, responses, tool arguments, batches, retry settings, endpoints,
+  reserved headers, and pending correlation are validated and bounded.
+  Credentials require HTTPS unless explicitly enabled for an exact loopback
+  DEV endpoint; pending polls ignore only network and 5xx failures.
+- Canonical execution JSON accepts only the cross-language safe numeric subset,
+  uses UTF-16 object-key ordering, and bounds receipt finalization.
+
 ## 1.5.0 — 2026-07-26
 
 ### Added

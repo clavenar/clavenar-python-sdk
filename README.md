@@ -122,7 +122,28 @@ except ClavenarPending as p:
 ```
 
 Transient transport errors (5xx, network blips) are swallowed between
-polls. Terminal errors (404, 401) re-raise immediately.
+polls. Malformed success bodies, correlation mismatches, and every other status
+re-raise immediately. Sync wrappers use
+`p.resolve_sync(poll_interval_s=2.0, timeout_s=600.0)`.
+
+## Governed execution
+
+Use `execute_prepared_tool` or `execute_prepared_tool_sync` when policy
+authorization and the provider effect must form a recoverable workflow. Their
+options require an application-owned durable store, a cryptographic
+authorization verifier, a receipt signer, and an executor that forwards the
+supplied idempotency ID to the provider. Authorization bindings are checked
+before an intent is committed or an effect is released.
+
+On restart, a stored completion is integrity-checked and returned. A stored
+intent is passed to `recover_effect`; if recovery is absent or inconclusive,
+the SDK raises `ClavenarRecoveryRequired` instead of executing again.
+Completion plus receipt-outbox persistence is bounded by the finalization
+deadline.
+
+`SecureTransportProfile` reuses its sync and async connection pools. Call
+`reload()` / `reload_sync()` after rotating credential files and `aclose()` /
+`close()` during application shutdown.
 
 ## Debugging a denied tool call
 
@@ -195,7 +216,7 @@ are trusted.
 ## Install
 
 ```bash
-pip install clavenar-agent-sdk==1.5.0
+pip install clavenar-agent-sdk==1.5.1
 ```
 
 Python 3.10+. Runtime dep is `httpx` only; the `anthropic` and
@@ -213,6 +234,11 @@ Python 3.10+. Runtime dep is `httpx` only; the `anthropic` and
 | `on_policy_error` | callable \| `None` | `None` | Fired per transport failure in observe mode |
 | `extra_headers` | `dict[str, str]` | `{}` | Forwarded on every inspect (`X-Clavenar-Demo-Prefix`, proxy auth, …) |
 | `retry` | `ClavenarRetryOptions` | `(3, 0.1)` | Jittered exponential backoff for 5xx + network errors |
+| `allow_insecure_loopback` | `bool` | `False` | Allow credentials over an exact loopback HTTP endpoint for local development only |
+
+Credential-bearing endpoints require HTTPS by default. Reserved protocol
+headers cannot be overridden through `extra_headers`; request and response
+sizes, batches, retry values, and identifiers are bounded before network work.
 
 ## Wire contract
 

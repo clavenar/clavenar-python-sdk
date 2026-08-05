@@ -23,6 +23,7 @@ from conftest import (
 
 from clavenar_agent_sdk.errors import (
     ClavenarDenied,
+    ClavenarPending,
     ClavenarRateLimited,
     ClavenarTransportError,
 )
@@ -71,6 +72,43 @@ def test_sync_anthropic_deny_raises_clavenar_denied() -> None:
         client.messages.create(model="claude-x")
     assert exc.value.tool_name == "rm_rf"
     assert exc.value.intent_category == "fs_write"
+
+
+@respx.mock
+def test_sync_pending_can_resolve_without_an_event_loop() -> None:
+    respx.post(f"{FAKE_ENDPOINT}/mcp").mock(
+        return_value=httpx.Response(
+            202,
+            json={
+                "status": "pending",
+                "correlation_id": "sync-corr",
+                "review_reasons": ["review"],
+            },
+        )
+    )
+    respx.get(f"{FAKE_ENDPOINT}/pending/sync-corr").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "correlation_id": "sync-corr",
+                "agent_id": "agent-a",
+                "tool_type": "function",
+                "method": "tools/call",
+                "review_reasons": ["review"],
+                "requested_at": "2026-05-12T00:00:00Z",
+                "decided_at": "2026-05-12T00:00:01Z",
+                "decision": "allow",
+                "decider_note": None,
+            },
+        )
+    )
+    client = clavenar_wrap(
+        _sync_anthropic(make_anthropic_message_with_tool_use()),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
+    )
+    with pytest.raises(ClavenarPending) as pending:
+        client.messages.create(model="claude-x")
+    pending.value.resolve_sync(poll_interval_s=0.001, timeout_s=1.0)
 
 
 @respx.mock

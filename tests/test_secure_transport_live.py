@@ -42,8 +42,10 @@ async def test_real_mtls_certificate_and_token_rotation() -> None:
 
     shutil.copyfile(_required("CLAVENAR_SECURE_TRANSPORT_NEXT_CERT"), cert)
     shutil.copyfile(_required("CLAVENAR_SECURE_TRANSPORT_NEXT_KEY"), key)
+    await profile.reload()
     assert (await inspect_tool_use(call, options)).kind == "allow"
     assert generation == 2
+    await profile.aclose()
 
 
 def _required(name: str) -> str:

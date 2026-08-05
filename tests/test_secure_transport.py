@@ -48,3 +48,22 @@ def test_zero_timeout_fails_before_credentials_are_read(tmp_path: Path) -> None:
     )
     with pytest.raises(ClavenarConfigError, match="timeouts must be positive"):
         profile.client()
+
+
+def test_sync_client_is_reused_and_close_is_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx
+
+    profile = SecureTransportProfile(
+        ca_bundle_path=tmp_path / "ca",
+        client_certificate_path=tmp_path / "cert",
+        private_key_path=tmp_path / "key",
+    )
+    client = httpx.Client()
+    monkeypatch.setattr(profile, "_new_sync_client", lambda: client)
+    assert profile.client() is client
+    assert profile.client() is client
+    profile.close()
+    with pytest.raises(ClavenarConfigError, match="closed"):
+        profile.client()

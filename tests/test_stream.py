@@ -17,7 +17,7 @@ from conftest import (
     make_openai_tool_call_chunks,
 )
 
-from clavenar_agent_sdk.errors import ClavenarDenied, ClavenarPending
+from clavenar_agent_sdk.errors import ClavenarDenied, ClavenarPending, ClavenarTransportError
 from clavenar_agent_sdk.options import ClavenarOptions
 from clavenar_agent_sdk.stream import wrap_anthropic_stream, wrap_openai_chat_stream
 
@@ -88,6 +88,14 @@ async def test_anthropic_stream_pending_raises_clavenar_pending() -> None:
         async for _ in wrap_anthropic_stream(async_iter(events), _enforce()):
             pass
     assert exc.value.correlation_id == "corr-x"
+
+
+@respx.mock
+async def test_anthropic_stream_fails_if_tool_block_never_closes() -> None:
+    events = make_anthropic_tool_use_events()[:-2]
+    with pytest.raises(ClavenarTransportError, match="ended before"):
+        async for _ in wrap_anthropic_stream(async_iter(events), _enforce()):
+            pass
 
 
 @respx.mock
@@ -205,3 +213,40 @@ async def test_openai_stream_observe_transport_error_routes_to_callback() -> Non
         out.append(c)
     assert len(out) == len(chunks)
     assert errors == ["list_files:502"]
+
+
+async def test_openai_terminal_without_buffers_fails_closed() -> None:
+    chunks = [
+        {
+            "choices": [
+                {"index": 0, "delta": {}, "finish_reason": "tool_calls"},
+            ]
+        }
+    ]
+    with pytest.raises(ClavenarTransportError, match="without tool buffers"):
+        async for _ in wrap_openai_chat_stream(async_iter(chunks), _enforce()):
+            pass
+
+
+async def test_openai_terminal_shape_error_observe_reports_and_passes() -> None:
+    errors: list[str] = []
+
+    async def on_policy_error(error, context) -> None:  # type: ignore[no-untyped-def]
+        errors.append(f"{context.tool_name}:{error}")
+
+    chunks = [
+        {
+            "choices": [
+                {"index": 0, "delta": {}, "finish_reason": "tool_calls"},
+            ]
+        }
+    ]
+    opts = ClavenarOptions(
+        endpoint=FAKE_ENDPOINT,
+        mode="observe",
+        on_policy_error=on_policy_error,
+    )
+    seen = [chunk async for chunk in wrap_openai_chat_stream(async_iter(chunks), opts)]
+    assert seen == chunks
+    assert len(errors) == 1
+    assert errors[0].startswith("<openai-stream>:")

@@ -15,12 +15,14 @@ from clavenar_agent_sdk.errors import (
     ClavenarDenied,
     ClavenarPending,
     ClavenarRateLimited,
+    ClavenarRecoveryRequired,
     ClavenarTransportError,
 )
 from clavenar_agent_sdk.governed_execution import (
     AsyncDurableExecutionStore,
     AsyncGovernedExecutionOptions,
     ExecutionEffect,
+    ExecutionState,
     GovernedExecutionOutcome,
     PreparedToolRequest,
     SyncDurableExecutionStore,
@@ -60,7 +62,7 @@ from clavenar_agent_sdk.transport import (
 )
 from clavenar_agent_sdk.wrap import clavenar_wrap
 
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 
 __all__ = [
     "AsyncDurableExecutionStore",
@@ -70,11 +72,13 @@ __all__ = [
     "ClavenarOptions",
     "ClavenarPending",
     "ClavenarRateLimited",
+    "ClavenarRecoveryRequired",
     "ClavenarRetryOptions",
     "ClavenarTransportError",
     "ClavenarVerdict",
     "ClavenarVerdictContext",
     "ExecutionEffect",
+    "ExecutionState",
     "GovernedExecutionOutcome",
     "NormalizedToolCall",
     "PreparedToolRequest",

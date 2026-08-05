@@ -53,6 +53,65 @@ def test_wrap_rejects_bad_endpoint() -> None:
         )
 
 
+@respx.mock
+async def test_wrap_is_idempotent() -> None:
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp").mock(return_value=httpx.Response(200))
+    client = _anthropic_client(make_anthropic_message_with_tool_use())
+    wrapped = clavenar_wrap(client, ClavenarOptions(endpoint=FAKE_ENDPOINT))
+    assert clavenar_wrap(wrapped, ClavenarOptions(endpoint=FAKE_ENDPOINT)) is wrapped
+    await wrapped.messages.create(model="claude-x")
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_malformed_openai_arguments_fail_closed_before_network() -> None:
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp")
+    client = clavenar_wrap(
+        _openai_client(make_openai_completion_with_tool_call(arguments="{bad")),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
+    )
+    with pytest.raises(ClavenarTransportError, match="malformed JSON"):
+        await client.chat.completions.create(model="gpt-5")
+    assert route.call_count == 0
+
+
+@respx.mock
+async def test_missing_provider_core_shape_fails_closed_before_network() -> None:
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp")
+    client = clavenar_wrap(
+        _anthropic_client({"stop_reason": "end_turn"}),
+        ClavenarOptions(endpoint=FAKE_ENDPOINT),
+    )
+    with pytest.raises(ClavenarTransportError, match="content list"):
+        await client.messages.create(model="claude-x")
+    assert route.call_count == 0
+
+
+@respx.mock
+async def test_provider_shape_drift_observe_reports_and_passes_through() -> None:
+    route = respx.post(f"{FAKE_ENDPOINT}/mcp")
+    errors: list[str] = []
+
+    async def on_policy_error(error, context) -> None:  # type: ignore[no-untyped-def]
+        errors.append(f"{context.tool_name}:{error}")
+
+    response = {
+        "choices": [{"message": {"tool_calls": []}, "finish_reason": "tool_calls"}],
+    }
+    client = clavenar_wrap(
+        _openai_client(response),
+        ClavenarOptions(
+            endpoint=FAKE_ENDPOINT,
+            mode="observe",
+            on_policy_error=on_policy_error,
+        ),
+    )
+    assert await client.chat.completions.create(model="gpt-5") is response
+    assert len(errors) == 1
+    assert errors[0].startswith("<openai-response>:")
+    assert route.call_count == 0
+
+
 # ---- enforce mode ---------------------------------------------------------
 
 

@@ -116,12 +116,13 @@ sequenceDiagram
         Hx-->>T: response
         T->>T: read X-Clavenar-Correlation-Id header
         alt 200
+            T->>T: accept empty body or exact { verdict: allow } only
             T-->>Insp: _Allow(correlation_id)
         else 403
             T->>T: _parse_deny_body — error security_violation + reasons + review_reasons + intent_category
             T-->>Insp: _Deny(reasons, review_reasons, intent_category, correlation_id)
         else 202
-            T->>T: _parse_pending_body — corr = header OR body.correlation_id else ClavenarTransportError 202
+            T->>T: require header/body correlation IDs to match; accept either alone
             T-->>Insp: _Pending(correlation_id, review_reasons)
         else 5xx OR httpx.TimeoutException OR httpx.HTTPError
             T->>T: raise ClavenarTransportError — _is_retriable true for None status OR 5xx then sleep _backoff_s
@@ -233,9 +234,9 @@ runs whatever side-work fits during the wait, then `await
 pending.resolve(...)`. The loop polls
 `GET /pending/{correlation_id}` every `poll_interval_s` (default 2s)
 until the operator decides or the `time.monotonic()` deadline trips
-at `timeout_s` (default 600s). Terminal transport failures (401,
-404) re-raise immediately; everything else (5xx, network blips,
-None view) is swallowed and the loop continues.
+at `timeout_s` (default 600s). Only 5xx and network failures are transient.
+Malformed success bodies, correlation mismatches, and every other status
+re-raise immediately.
 
 ```mermaid
 sequenceDiagram
@@ -260,7 +261,7 @@ sequenceDiagram
         alt 200
             L-->>Hx: ClavenarPendingView body
             Hx-->>T: response
-            T->>T: _parse_pending_view — assert decision in (None, allow, deny)
+            T->>T: validate shape, correlation_id, and decision in (None, allow, deny)
             T-->>Poll: ClavenarPendingView
             Poll-->>Pending: view
             alt view.decision == allow
@@ -271,11 +272,11 @@ sequenceDiagram
             else view.decision == None
                 Pending->>Pending: not decided yet — fall through to sleep
             end
-        else 401 or 404 (terminal)
+        else malformed 200 or any non-5xx status (terminal)
             L-->>Hx: status
             Hx-->>T: response
             T-->>Poll: raise ClavenarTransportError(status)
-            Poll-->>Pending: ClavenarTransportError with status 401 or 404
+            Poll-->>Pending: ClavenarTransportError
             Pending-->>Partner: re-raise immediately (terminal)
         else 5xx, httpx.TimeoutException, httpx.HTTPError
             L-->>Hx: error
@@ -388,7 +389,7 @@ flowchart TD
     Rd -->|deny within deadline| Rdn[raise ClavenarDenied — intent_category PendingDenied + decider_note]
     Rto[raise ClavenarTransportError — not decided within timeout_s]
     Rd -->|deadline trip| Rto
-    Rd -->|401 or 404 terminal| Rterm[raise ClavenarTransportError immediately]
+    Rd -->|malformed / mismatch / non-5xx terminal| Rterm[raise ClavenarTransportError immediately]
 
     Obs --> Pass[response or stream chunks pass through to partner]
     Ok --> Pass
