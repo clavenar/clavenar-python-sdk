@@ -18,23 +18,28 @@ Python 3.10+. Runtime dep is `httpx` only (plus `typing-extensions` on
 
 Run: library, no binary. Public entry: `clavenar_wrap(client, ClavenarOptions(...))`.
 The wrapped client targets a Clavenar gateway at `ClavenarOptions.endpoint`
-(e.g. clavenar-lite on `http://localhost:8080`); no port is opened by the SDK.
+(e.g. clavenar-lite on `http://localhost:8088`); no port is opened by the SDK.
 
 ## Layout
 - `src/clavenar_agent_sdk/__init__.py` — public surface; `__all__` is the API contract. Mirror any export change here.
 - `wrap.py` — `clavenar_wrap`: in-place monkey-patch of the client's `create`; sync/async fork via `inspect.iscoroutinefunction`.
 - `transport.py` — inspect calls + pending poll (`inspect_tool_use[_sync]`, `poll_pending_once[_sync]`); `NormalizedToolCall`, `ClavenarVerdict`.
+- `governed_execution.py` — durable `clavenar.server-execution/v1`
+  intent/effect/completion orchestration, replay, and uncertain-outcome
+  recovery.
+- `secure_transport.py` — reloadable mTLS/token transport profile with
+  last-known-good credential activation.
 - `stream.py` — streaming intercept; closing event held until verdict (`wrap_anthropic_stream[_sync]`, `wrap_openai_chat_stream[_sync]`).
 - `_anthropic.py` / `_openai.py` — provider-shaped tool-call extraction (structural, no provider import).
 - `realtime.py` — standalone OpenAI Realtime WS helpers (`inspect_realtime_function_call`, …).
 - `options.py` — `ClavenarOptions`, `ClavenarRetryOptions`, `ClavenarVerdictContext`.
-- `errors.py` — `ClavenarDenied` / `ClavenarPending` / `ClavenarTransportError` / `ClavenarConfigError`.
+- `errors.py` — `ClavenarDenied` / `ClavenarPending` /
+  `ClavenarRateLimited` / `ClavenarRecoveryRequired` /
+  `ClavenarTransportError` / `ClavenarConfigError`.
 - `devmode.py` — `render_deny_panel` (public: returns the deny-panel string); the internal `emit_deny_panel` writes it to stderr before the raise when `dev_mode=True`.
 - `tests/`, `examples/` (anthropic/openai/langchain/llamaindex/realtime/computer-use recipes), `docs/SEQUENCES.md`.
 
 ## Conventions & invariants
-
-- After adding or updating a feature, also update the relevant `MANUAL_TESTS*` file(s) when needed.
 
 - **Inspect-before-run is the whole product.** Every tool call is inspected before the partner code can act on it; never add a path that runs a tool ahead of its verdict.
 - **No provider import.** Detect client shape structurally (duck-typing on `create`); keep `anthropic`/`openai` optional — don't import them at module load.
@@ -43,6 +48,10 @@ The wrapped client targets a Clavenar gateway at `ClavenarOptions.endpoint`
 - **Modes.** `enforce` (default) raises on deny / on transport failure after retries; `observe` passes through and fires `on_verdict` / `on_policy_error`.
 - **Pending → resolve.** `ClavenarPending.resolve()` polls; transient 5xx / network blips are swallowed between polls, terminal 4xx (404/401) re-raise.
 - **Retries.** 5xx + network errors retry with jittered exponential backoff; 200/403/other-4xx never retry. `max_attempts=1` disables.
+- **Decision retries never imply effect retries.** The packaged
+  `client-migration-v1` and `retry-separation-v1` fixtures pin the boundary:
+  recover a durable execution by idempotency ID after uncertainty, or raise
+  `ClavenarRecoveryRequired`; never blindly repeat the tool effect.
 - **`dev_mode` is an attacker oracle.** Per-detector deny detail is gated; only enable verbose verdicts / `dev_mode` in dev/staging.
 - **Sync callbacks for sync clients.** `on_verdict` / `on_policy_error` must be sync when wrapping a sync client.
 - Keep TS/Python parity: this SDK is a faithful client of the same wire contract the TS sibling implements; fix wire divergences against the spec, not by forking behaviour here.
