@@ -4,6 +4,13 @@ All notable changes to `clavenar-agent-sdk` (Python) are recorded here.
 
 ## Unreleased
 
+## 1.5.2 — 2026-08-08
+
+### Changed
+
+- Correct the published SDK guidance to name Lite's actual default endpoint,
+  `http://localhost:8088`.
+
 ## 1.5.1 — 2026-08-05
 
 ### Added

@@ -62,7 +62,7 @@ from clavenar_agent_sdk.transport import (
 )
 from clavenar_agent_sdk.wrap import clavenar_wrap
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 __all__ = [
     "AsyncDurableExecutionStore",
