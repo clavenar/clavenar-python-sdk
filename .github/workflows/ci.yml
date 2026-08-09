@@ -87,3 +87,4 @@ jobs:
         with:
           name: sbom
           path: bom.json
+          if-no-files-found: error
