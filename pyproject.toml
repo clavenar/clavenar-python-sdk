@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "clavenar-agent-sdk"
-version = "1.5.2"
+version = "1.5.3"
 description = "Wrap your Anthropic / OpenAI Python client. Every tool call is inspected by Clavenar before it runs."
 readme = "README.md"
 license = { text = "Apache-2.0" }

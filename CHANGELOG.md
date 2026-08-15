@@ -4,6 +4,13 @@ All notable changes to `clavenar-agent-sdk` (Python) are recorded here.
 
 ## Unreleased
 
+## 1.5.3 — 2026-08-15
+
+### Changed
+
+- Bind protected stack publication to the current reviewed security and
+  release-contract source.
+
 ## 1.5.2 — 2026-08-08
 
 ### Changed
