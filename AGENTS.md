@@ -22,21 +22,22 @@ The wrapped client targets a Clavenar gateway at `ClavenarOptions.endpoint`
 
 ## Layout
 - `src/clavenar_agent_sdk/__init__.py` — public surface; `__all__` is the API contract. Mirror any export change here.
-- `wrap.py` — `clavenar_wrap`: in-place monkey-patch of the client's `create`; sync/async fork via `inspect.iscoroutinefunction`.
-- `transport.py` — inspect calls + pending poll (`inspect_tool_use[_sync]`, `poll_pending_once[_sync]`); `NormalizedToolCall`, `ClavenarVerdict`.
-- `governed_execution.py` — durable `clavenar.server-execution/v1`
+- `src/clavenar_agent_sdk/wrap.py` — `clavenar_wrap`: in-place monkey-patch of the client's `create`; sync/async fork via `inspect.iscoroutinefunction`.
+- `src/clavenar_agent_sdk/transport.py` — inspect calls + pending poll (`inspect_tool_use[_sync]`, `poll_pending_once[_sync]`); `NormalizedToolCall`, `ClavenarVerdict`.
+- `src/clavenar_agent_sdk/governed_execution.py` — durable `clavenar.server-execution/v1`
   intent/effect/completion orchestration, replay, and uncertain-outcome
   recovery.
-- `secure_transport.py` — reloadable mTLS/token transport profile with
+- `src/clavenar_agent_sdk/secure_transport.py` — reloadable mTLS/token transport profile with
   last-known-good credential activation.
-- `stream.py` — streaming intercept; closing event held until verdict (`wrap_anthropic_stream[_sync]`, `wrap_openai_chat_stream[_sync]`).
-- `_anthropic.py` / `_openai.py` — provider-shaped tool-call extraction (structural, no provider import).
-- `realtime.py` — standalone OpenAI Realtime WS helpers (`inspect_realtime_function_call`, …).
-- `options.py` — `ClavenarOptions`, `ClavenarRetryOptions`, `ClavenarVerdictContext`.
-- `errors.py` — `ClavenarDenied` / `ClavenarPending` /
+- `src/clavenar_agent_sdk/stream.py` — streaming intercept; closing event held until verdict (`wrap_anthropic_stream[_sync]`, `wrap_openai_chat_stream[_sync]`).
+- `src/clavenar_agent_sdk/_anthropic.py` / `src/clavenar_agent_sdk/_openai.py` — provider-shaped tool-call extraction (structural, no provider import).
+- `src/clavenar_agent_sdk/realtime.py` — standalone OpenAI Realtime WS helpers (`inspect_realtime_function_call`, …).
+- `src/clavenar_agent_sdk/options.py` — `ClavenarOptions`, `ClavenarRetryOptions`, `ClavenarVerdictContext`.
+- `src/clavenar_agent_sdk/errors.py` — `ClavenarDenied` / `ClavenarPending` /
   `ClavenarRateLimited` / `ClavenarRecoveryRequired` /
   `ClavenarTransportError` / `ClavenarConfigError`.
-- `devmode.py` — `render_deny_panel` (public: returns the deny-panel string); the internal `emit_deny_panel` writes it to stderr before the raise when `dev_mode=True`.
+- `src/clavenar_agent_sdk/devmode.py` — `render_deny_panel` (public: returns the deny-panel string); the internal `emit_deny_panel` writes it to stderr before the raise when `dev_mode=True`.
+- `fixtures/` — `client-migration-v1` and `retry-separation-v1` schemas/fixtures.
 - `tests/`, `examples/` (anthropic/openai/langchain/llamaindex/realtime/computer-use recipes), `docs/SEQUENCES.md`.
 
 ## Conventions & invariants
