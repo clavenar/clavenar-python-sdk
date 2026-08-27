@@ -7,11 +7,17 @@ it — a denied call raises instead of executing. Pure client: no server,
 no listener; it talks to a Clavenar gateway over HTTP.
 
 ## Build, test, lint
-- Dev install: `pip install -e '.[dev]'`
-- Build dist: `pip install build && python -m build` (`build` is not in `.[dev]`; sdist + wheel; backend `hatchling`)
+- CI-parity install: `uv pip install -e '.[dev]' && uv pip install build==1.5.0`
+- Build dist: `python -m build` (sdist + wheel; backend `hatchling`)
 - Test: `pytest` (`asyncio_mode = "auto"`, `testpaths = ["tests"]`)
 - Lint: `ruff check` + `ruff format --check`
 - Types: `mypy src/clavenar_agent_sdk` (`strict`, pinned to py3.10 floor)
+- Supply chain: install the workflow-pinned `pip-audit` and `cyclonedx-bom`,
+  then run `pip-audit` and `cyclonedx-py environment -o bom.json`.
+
+CI runs Python 3.10, 3.11, 3.12, and 3.13. Use the exact patch versions and
+tool pins from `.github/workflows/ci.yml` when reproducing a matrix failure;
+do not copy them into long-lived prose.
 
 Python 3.10+. Runtime dep is `httpx` only (plus `typing-extensions` on
 <3.12). `anthropic` / `openai` are **not** imported — bring your own.
@@ -66,4 +72,7 @@ Python coding standards (the ones that bite here):
 - Commit subjects must start with a lowercase letter.
 
 ## Pointers
-README.md · SECURITY.md · docs/SEQUENCES.md · examples/ — the wire contract this SDK speaks (POST /mcp, verdict envelope, pending/resolve, `X-Clavenar-*` headers) is the source of truth in the public `clavenar-specs` TECH_SPEC.
+
+[README](README.md) · [security policy](SECURITY.md) ·
+[sequence diagrams](docs/SEQUENCES.md) · [examples](examples/) ·
+[public wire contract](../clavenar-specs/TECH_SPEC.md).
